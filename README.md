@@ -40,17 +40,21 @@ java -jar ceur-index-html-helper-1.0-SNAPSHOT-uber.jar \
 	-e ~/swat4hcls-2025-editors-affiliations/
 ```
 
-The input directory should contain at least the following using the same example as above
+The input directory should contain a structure
 
 ```
 ~/swat4hcls-proceedings-2025/preface.pdf # The preface written by the editor
-							/short/paper-1.pdf #names of the files don't matter
+							/Short Papers/paper-1.pdf #names of the files don't matter
 								  /our-submission.pdf
 								  /why-do-authors-give-crappy-names-to-their-files.pdf
-							/long/paper-sixty-pages.pdf
+							/Long Papers/paper-sixty-pages.pdf
 							     /ouff-ten-pages.pdf
 							     /why-so-long.pdf
+							/Demo/cool.pdf
+							/Keynote/whow-what-a-career.pdf
+							/Invited Talks/like-this-prof.pdf
 ```
+Folders names should be written out as you want the Sessions to be headed in the index.html 
 
 The file 'e/--editor-affiliations' is a new line separated file containing on each line
 the affiliations of a conference chair/editor. e.g.
