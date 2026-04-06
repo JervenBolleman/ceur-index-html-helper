@@ -47,6 +47,11 @@
 			<artifactId>rdf4j-model-api</artifactId>
 			<version>5.2.0</version>
 		</dependency>
+		<dependency>
+			<groupId>info.picocli</groupId>
+			<artifactId>picocli</artifactId>
+			<version>4.7.6</version>
+		</dependency>
 	</dependencies>
 	<build>
 		<plugins>
@@ -62,6 +67,48 @@
 					<verbose>true</verbose>
 				</configuration>
 			</plugin>
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-shade-plugin</artifactId>
+				<version>3.5.1</version>
+				<configuration>
+					<filters>
+						<filter>
+							<artifact>*:*</artifact>
+							<excludes>
+								<exclude>META-INF/*.SF</exclude>
+								<exclude>META-INF/*.DSA</exclude>
+								<exclude>META-INF/*.RSA</exclude>
+							</excludes>
+						</filter>
+					</filters>
+				</configuration>
+				<executions>
+					<execution>
+						<phase>package</phase>
+						<goals>
+							<goal>shade</goal>
+						</goals>
+						<configuration>
+							<shadedArtifactAttached>true</shadedArtifactAttached>
+							<shadedClassifierName>uber</shadedClassifierName>
+							<transformers>
+								<transformer
+									implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
+								<transformer
+									implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
+									<manifestEntries>
+										<Multi-Release>true</Multi-Release>
+									</manifestEntries>
+									<mainClass>
+										swiss.sib.swissprot.App</mainClass>
+								</transformer>
+							</transformers>
+							<outputFile>${project.build.directory}/${project.artifactId}-${project.version}-uber.jar</outputFile>
+						</configuration>
+					</execution>
+				</executions>
+			</plugin>
 		</plugins>
 		<pluginManagement>
 			<plugins>
@@ -75,47 +122,7 @@
 					<artifactId>maven-source-plugin</artifactId>
 					<version>3.3.1</version>
 				</plugin>
-				<plugin>
-					<groupId>org.apache.maven.plugins</groupId>
-					<artifactId>maven-shade-plugin</artifactId>
-					<version>3.5.1</version>
-					<configuration>
-						<filters>
-							<filter>
-								<artifact>*:*</artifact>
-								<excludes>
-									<exclude>META-INF/*.SF</exclude>
-									<exclude>META-INF/*.DSA</exclude>
-									<exclude>META-INF/*.RSA</exclude>
-								</excludes>
-							</filter>
-						</filters>
-					</configuration>
-					<executions>
-						<execution>
-							<phase>package</phase>
-							<goals>
-								<goal>shade</goal>
-							</goals>
-							<configuration>
-								<shadedArtifactAttached>true</shadedArtifactAttached>
-								<shadedClassifierName>uber</shadedClassifierName>
-								<transformers>
-									<transformer
-										implementation="org.apache.maven.plugins.shade.resource.ServicesResourceTransformer" />
-									<transformer
-										implementation="org.apache.maven.plugins.shade.resource.ManifestResourceTransformer">
-										<manifestEntries>
-											<Multi-Release>true</Multi-Release>
-										</manifestEntries>
-										<mainClass>
-											swiss.sib.swissprot.App</mainClass>
-									</transformer>
-								</transformers>
-							</configuration>
-						</execution>
-					</executions>
-				</plugin>
+
 				<plugin>
 					<groupId>org.apache.maven.plugins</groupId>
 					<artifactId>maven-jar-plugin</artifactId>

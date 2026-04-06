@@ -53,6 +53,8 @@ import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
 
+import picocli.CommandLine;
+import picocli.CommandLine.Option;
 import swiss.sib.swissprot.PdfDataExtractor.Author;
 import swiss.sib.swissprot.PdfDataExtractor.PdfData;
 import swiss.sib.swissprot.sjh.Attributes;
@@ -68,7 +70,6 @@ import swiss.sib.swissprot.sjh.attributes.grouping.Value;
 import swiss.sib.swissprot.sjh.attributes.rdfa.RdfaAttribute;
 import swiss.sib.swissprot.sjh.attributes.rdfa.core.Datatype;
 import swiss.sib.swissprot.sjh.attributes.rdfa.lite.Property;
-import swiss.sib.swissprot.sjh.attributes.rdfa.lite.RdfaLiteAttribute;
 import swiss.sib.swissprot.sjh.attributes.rdfa.lite.Resource;
 import swiss.sib.swissprot.sjh.attributes.rdfa.lite.Typeof;
 import swiss.sib.swissprot.sjh.elements.Element;
@@ -101,7 +102,6 @@ import swiss.sib.swissprot.sjh.elements.text.Sup;
 import swiss.sib.swissprot.sjh.elements.text.Time;
 
 /**
- * Hello world!
  *
  */
 public class App {
@@ -110,9 +110,7 @@ public class App {
 	private static final Rel SCHEMA_PAGE_END = new Rel("schema:pageEnd");
 	private static final Clazz CUER_VOL_ACRONYM = clazz("CEURVOLACRONYM");
 	private static final Clazz CUERTITLE = clazz("CEURTITLE");
-	private static final Typeof ARTICLE_PROCEEDINGS = new Typeof("schema:Article bibo:Proceedings");
 	private static final Typeof SCHOLARTLY_ARTICLE = new Typeof("schema:ScholarlyArticle");
-	private static final RdfaLiteAttribute SHORT_TITLE = new Property("bibo:shortTitle schema:alternateName");
 	private static final Property SCHEMA_NAME = new Property("schema:name");
 	private static final Property SCHEMA_IN_LANGUAGE = new Property("schema:inLanguage");
 	private static final Property BIBO_VOLUME = new Property("bibo:volume");
@@ -121,27 +119,56 @@ public class App {
 	private static final Rel SCHEMA_AUTHOR = new Rel("schema:author");
 	private static final Rel BIBO_EDITOR = new Rel("bibo:editor");
 	private static final Property SCHEMA_EDITOR = new Property("schema:editor");
-	private static final Property SCHEMA_DESCRIPTION = new Property("schema:description");
 	private static final Rel OWL_SAME_AS = new Rel("owl:sameAs");
 	private static final Clazz ORCID_CLAZZ = clazz("orcid");
 
+	@Option(names = "-i", description = "input directory containing a preface.pdf and directories for each section containing all the paper pdfs", required = true)
+	public File inputDir;
+
+	@Option(names = "-o", description = "output directory that is going to contain the index.html and pdfs ready for packaging and submission", required = true)
+	public File outputDir;
+
+	@Option(names = { "-f",
+			"--conf-full-name" }, description = "Full name of the conference (don't forget to put it in between single or double quotes if it contains spaces)", required = true)
+	String fullConferenceTitle;
+
+	@Option(names = { "-s",
+			"--conf-short-name" }, description = "Short name of the conference (don't forget to put it in between single or double quotes if it contains spaces)", required = true)
+	String shortConferenceTitle;
+
+	@Option(names = { "-u", "--webpage" }, description = "URL of the conference webpage", required = true)
+	String confurl;
+
+	@Option(names = { "-c", "--city" }, description = "City in which the conference took place", required = true)
+	String city;
+
+	@Option(names = { "-y", "--year" }, description = "Year the conference took place in", required = true)
+	int year;
+
+	@Option(names = { "-p",
+			"--period" }, description = "String representing the periond the conference lasted e.g. 'Feb 24-27' or 'Apr 29-May 5'", required = true)
+	String period;
+
+	@Option(names = { "-e",
+			"--editors-affiliations" }, description = "File containing affiliations of the editors, one line per editor. Must be in the same order as they are named in the preface.pdf", required = true)
+	File editors;
+
+	@Option(names = { "-n", "--submitting-editor" }, description = "Your name as submitting editor", required = true)
+	String submittingEditor;
+
+	@Option(names = { "-h", "--help" }, usageHelp = true, description = "display a help message")
+	private boolean helpRequested = false;
+
 	public static void main(String[] args) throws IOException {
-		File inputDir = new File(args[0]);
-		File outputDir = new File(args[1]);
-		if (!outputDir.exists() && !outputDir.mkdir()) {
-			System.err.println("Output directory does not exist and can't be made:" + outputDir.getAbsolutePath());
-			System.exit(1);
+		App app = new App();
+		CommandLine cl = new CommandLine(app);
+		cl.parseArgs(args);
+		if (cl.isUsageHelpRequested()) {
+			cl.usage(System.out);
+		} else {
+			app.convert(app.inputDir, app.outputDir, app.fullConferenceTitle, app.shortConferenceTitle, app.confurl,
+					app.city, app.period, app.year, app.editors, app.submittingEditor);
 		}
-		String fullConferenceTitle = args[1];
-		String shortConferenceTitle = args[2];
-		String confurl = args[3];
-		String city = args[4];
-		String monthday = args[5];
-		int year = Integer.parseInt(args[6]);
-		File editors = new File(args[7]);
-		String submittingEditor = args[8];
-		new App().convert(inputDir, outputDir, fullConferenceTitle, shortConferenceTitle, confurl, city, monthday, year,
-				editors, submittingEditor);
 	}
 
 	public int pageStart = 1;
