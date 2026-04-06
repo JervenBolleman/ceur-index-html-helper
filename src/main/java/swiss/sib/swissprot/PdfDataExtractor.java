@@ -1,0 +1,299 @@
+package swiss.sib.swissprot;
+
+import java.io.IOException;
+import java.io.StringReader;
+import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
+import org.apache.pdfbox.pdmodel.PDDocumentInformation;
+import org.apache.pdfbox.pdmodel.common.PDMetadata;
+import org.apache.pdfbox.text.PDFTextStripper;
+import org.apache.pdfbox.text.TextPosition;
+import org.eclipse.rdf4j.common.exception.RDF4JException;
+import org.eclipse.rdf4j.model.Model;
+import org.eclipse.rdf4j.model.Resource;
+import org.eclipse.rdf4j.model.vocabulary.DC;
+import org.eclipse.rdf4j.model.vocabulary.RDF;
+import org.eclipse.rdf4j.rio.RDFFormat;
+import org.eclipse.rdf4j.rio.Rio;
+
+public class PdfDataExtractor {
+	private static final Pattern ORCID_PATTERN = Pattern
+			.compile("(\\d{4}\n?-\\n?\\d{4}\\n?-\\n?\\d{4}\\n?-\\n?\\d{3}[\\dX])\\s\\(([^\\)]+)\\)");
+	/**
+	 * Creator of the ODF template, not likely to be the author the actual paper.
+	 */
+	private static final String ALEKSANDR_OMETOV_TAU = "Aleksandr Ometov (TAU)";
+
+	public static class Author {
+		private String name;
+		private String orcid;
+		private String affiliation;
+
+		public Author(String name) {
+			this.name = name;
+		}
+
+		public String orcid() {
+			return orcid;
+		}
+
+		public String name() {
+			return name;
+		}
+
+		public String affiliation() {
+			return affiliation;
+		}
+	}
+
+	public static record PdfData(String title, List<Author> authors) {
+
+	}
+
+	public static PdfData extract(PDDocument doc) throws IOException {
+		PDDocumentInformation doci = doc.getDocumentInformation();
+		String title = doci.getTitle();
+		PDDocumentCatalog cata = doc.getDocumentCatalog();
+		PDMetadata metadata = cata.getMetadata();
+		List<String> authorNames = new ArrayList<>();
+		FontAwareStripper stripper = new FontAwareStripper();
+		stripper.getText(doc);
+		if (title == null) {
+			title = findTitleByLargestFont(stripper);
+		}
+		extractAuthorNamesFromMetadata(metadata, authorNames);
+		if (authorNames.isEmpty()) {
+			authorNames = findAuthorsBeforeAbstract(stripper);
+		}
+		List<Author> authors = authorNames.stream().map(Author::new).toList();
+		findEmailsAndOrcids(doc, authors);
+		if (title != null) {
+			return new PdfData(title, authors);
+		}
+		return null;
+	}
+
+	private static void findEmailsAndOrcids(PDDocument doc, List<Author> authors) throws IOException {
+		PDFTextStripper stripper = new PDFTextStripper();
+		stripper.setStartPage(1);
+		stripper.setEndPage(1);
+		String text = stripper.getText(doc);
+		var orcMatcher = ORCID_PATTERN.matcher(text);
+		int lastAuthorMatchedToOrcid = 0;
+		while (orcMatcher.find()) {
+			String orcid = orcMatcher.group(1).replaceAll("\n", "");
+			String person = orcMatcher.group(2).replaceAll("\n", "");
+			String[] abbrvNameParts = person.split(" ");
+			for (int i = lastAuthorMatchedToOrcid; i < authors.size(); i++) {
+				Author author = authors.get(i);
+				String[] nameParts = author.name.split(" ");
+				if (match(abbrvNameParts, author, nameParts)) {
+					author.orcid = orcid;
+				}
+			}
+		}
+
+	}
+
+	private static boolean match(String[] abbrvNameParts, Author author, String[] nameParts) {
+		if (abbrvNameParts.length == nameParts.length) {
+			boolean match = true;
+			for (int j = 0; j < abbrvNameParts.length && match; j++) {
+				String abbrvNamePart = abbrvNameParts[j];
+				String namePart = nameParts[j];
+				boolean matchesFirstName = abbrvNamePart.endsWith(".") && namePart.charAt(0) == abbrvNamePart.charAt(0);
+				boolean matchesLastName = !abbrvNamePart.endsWith(".") && namePart.equals(abbrvNamePart);
+				if (!matchesFirstName && !matchesLastName) {
+					return false;
+				}
+			}
+			return match;
+		} else {
+			return false;
+		}
+	}
+
+	private static void extractAuthorNamesFromMetadata(PDMetadata metadata, List<String> authorNames) {
+		try (var in = metadata.createInputStream()) {
+			String xmlAndrdfxml = new String(in.readAllBytes(), StandardCharsets.UTF_8);
+			int start = xmlAndrdfxml.indexOf("<rdf");
+			int end = xmlAndrdfxml.lastIndexOf("RDF>");
+			String rdfxml = xmlAndrdfxml.substring(start, end + 4);
+			Model model = Rio.parse(new StringReader(rdfxml), "https://example.org/", RDFFormat.RDFXML);
+			for (var set : model.getStatements(null, DC.CREATOR, null)) {
+				for (var seq : model.getStatements((Resource) set.getObject(), null, null)) {
+					if (!seq.getPredicate().equals(RDF.TYPE)
+							&& seq.getPredicate().getNamespace().equals(RDF.NAMESPACE)) {
+						String authorName = seq.getObject().stringValue();
+						// This is the person whom made the template not the actual author.
+						if (!authorName.equals(ALEKSANDR_OMETOV_TAU)) {
+							authorNames.add(authorName);
+						}
+					}
+				}
+			}
+		} catch (IOException | RDF4JException e) {
+			// Ignore, because we are going to try and get the names out in a different way.
+		}
+	}
+
+	public static String findTitleByLargestFont(FontAwareStripper stripper) throws IOException {
+
+		List<TextLine> lines = stripper.getLines();
+		if (lines.isEmpty())
+			return "";
+
+		// Find the title size (assume it's the absolute largest font on page 1)
+		float maxTitleSize = 0;
+		for (TextLine line : lines) {
+			if (line.fontSize > maxTitleSize) {
+				maxTitleSize = line.fontSize;
+			}
+		}
+		StringBuilder title = new StringBuilder();
+
+		for (TextLine line : lines) {
+			if (line.fontSize == maxTitleSize) {
+				if (!title.isEmpty()) {
+					title.append(" ");
+				}
+				title.append(line.text);
+			}
+		}
+		return title.toString();
+	}
+
+	private static final Pattern COR_MARKS_ETC = Pattern.compile("[\\*†‡\\s]+");
+	private static final Pattern MULTIPLE_COMMA = Pattern.compile(",+");
+	private static final Pattern COMMA = Pattern.compile(",");
+
+	public static List<String> findAuthorsBeforeAbstract(FontAwareStripper stripper) throws IOException {
+		List<TextLine> lines = stripper.getLines();
+		if (lines.isEmpty())
+			return List.of();
+
+		// Find the title size (assume it's the absolute largest font on page 1)
+		float maxTitleSize = 0;
+		int lastTitleLine = 0;
+		for (int i = 0; i < lines.size(); i++) {
+			TextLine line = lines.get(i);
+			if (line.fontSize >= maxTitleSize) {
+				maxTitleSize = line.fontSize;
+				lastTitleLine = i;
+			}
+		}
+		StringBuilder authors = new StringBuilder();
+		int firstAuthorLine = lastTitleLine + 1;
+		float authorLineFontSize = lines.get(firstAuthorLine).fontSize;
+		int lastAuthorLine = extractLinesWithAuthorNames(lines, lastTitleLine, authors, authorLineFontSize);
+		List<String> affiliations = extractAffiliations(lines, lastAuthorLine, authorLineFontSize);
+		int maxAffiliationDigits = Integer.toString(affiliations.size()).length();
+		// Remove a dot at the end.
+		if (authors.charAt(authors.length() - 1) == '.')
+			authors.setLength(authors.length() - 2);
+		int lastAnd = authors.lastIndexOf(" and ");
+		authors.replace(lastAnd, lastAnd + 5, ", ");
+		Pattern removeAffiliations = Pattern.compile("\\d{1," + maxAffiliationDigits + "} ?,");
+		String noTokens = COR_MARKS_ETC.matcher(authors).replaceAll(" ");
+		Matcher matcher = removeAffiliations.matcher(noTokens);
+		while(matcher.find()) {
+			String group = matcher.group();
+			
+		}
+		matcher.reset();
+		String noAffi = matcher.replaceAll(",");
+		String noDouble = MULTIPLE_COMMA.matcher(noAffi).replaceAll(",");
+		return COMMA.splitAsStream(noDouble).map(String::trim).toList();
+	}
+
+	private static final Pattern START_DIGITS = Pattern.compile("^\\d+");
+
+	private static List<String> extractAffiliations(List<TextLine> lines, int lastAuthorLine, float authorLineFontSize) {
+		List<String> affiliations = new ArrayList<>();
+		for (int i = lastAuthorLine; i < lines.size(); i++) {
+			TextLine line = lines.get(i);
+
+			if ("Abstract".equalsIgnoreCase(line.text)) {
+				return affiliations;
+			} else {
+				Matcher matcher = START_DIGITS.matcher(line.text);
+				if (! matcher.find()) {
+					affiliations.add(line.text);
+				}
+			}
+		}
+		return affiliations;
+	}
+
+	private static int extractLinesWithAuthorNames(List<TextLine> lines, int lastTitleLine, StringBuilder authors,
+			float authorLineFontSize) {
+		int lastAuthorLine = lastTitleLine + 1;
+		for (int i = lastTitleLine + 1; i < lines.size(); i++) {
+			TextLine line = lines.get(i);
+
+			if (line.fontSize != authorLineFontSize) {
+				lastAuthorLine = i;
+				break;
+			}
+			if (!authors.isEmpty()) {
+				authors.append(" ");
+			}
+			authors.append(line.text);
+		}
+		return lastAuthorLine;
+	}
+
+	public static class FontAwareStripper extends PDFTextStripper {
+		private final List<TextLine> lines = new ArrayList<>();
+
+		public FontAwareStripper() throws IOException {
+			super();
+			setSortByPosition(true); // Crucial for getting lines in visual reading order
+			setStartPage(1);
+			setEndPage(1);
+		}
+
+		@Override
+		protected void writeString(String text, List<TextPosition> textPositions) throws IOException {
+			if (text.trim().isEmpty() || textPositions.isEmpty()) {
+				return;
+			}
+
+			// Find the maximum font size in this specific string of text
+			float maxFontSize = 0;
+			for (TextPosition position : textPositions) {
+				if (position.getFontSizeInPt() > maxFontSize) {
+					maxFontSize = position.getFontSizeInPt();
+				}
+			}
+
+			lines.add(new TextLine(text.trim(), maxFontSize));
+			super.writeString(text, textPositions);
+		}
+
+		public List<TextLine> getLines() {
+			return lines;
+		}
+	}
+
+	public static class TextLine {
+		public String text;
+		public float fontSize;
+
+		public TextLine(String text, float fontSize) {
+			this.text = text;
+			this.fontSize = fontSize;
+		}
+
+		@Override
+		public String toString() {
+			return String.format("[Size: %.2f] %s", fontSize, text);
+		}
+	}
+}
