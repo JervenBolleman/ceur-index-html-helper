@@ -44,10 +44,10 @@ The input directory should contain a structure
 
 ```
 ~/swat4hcls-proceedings-2025/preface.pdf # The preface written by the editor
-							/Short Papers/paper-1.pdf #names of the files don't matter
+							/Short Paper/paper-1.pdf #names of the files don't matter
 								  /our-submission.pdf
 								  /why-do-authors-give-crappy-names-to-their-files.pdf
-							/Long Papers/paper-sixty-pages.pdf
+							/Long Paper/paper-sixty-pages.pdf
 							     /ouff-ten-pages.pdf
 							     /why-so-long.pdf
 							/Demo/cool.pdf
@@ -64,6 +64,10 @@ university 1, country b
 company c, country d
 ```
 This must be in the same order as the editors named in the preface.pdf.
+
+## Checks for subset of CEUR requirements
+
+The option `--run-checks` generates an index.html with inline comments in red for failing checks. These checks are not complete but a first step.
 
 ## Preface
 

@@ -16,19 +16,14 @@ import static swiss.sib.swissprot.sjh.Elements.dd;
 import static swiss.sib.swissprot.sjh.Elements.div;
 import static swiss.sib.swissprot.sjh.Elements.dl;
 import static swiss.sib.swissprot.sjh.Elements.dt;
-import static swiss.sib.swissprot.sjh.Elements.footer;
 import static swiss.sib.swissprot.sjh.Elements.h1;
 import static swiss.sib.swissprot.sjh.Elements.h2;
 import static swiss.sib.swissprot.sjh.Elements.header;
 import static swiss.sib.swissprot.sjh.Elements.li;
-import static swiss.sib.swissprot.sjh.Elements.link;
-import static swiss.sib.swissprot.sjh.Elements.meta;
-import static swiss.sib.swissprot.sjh.Elements.p;
 import static swiss.sib.swissprot.sjh.Elements.section;
 import static swiss.sib.swissprot.sjh.Elements.span;
 import static swiss.sib.swissprot.sjh.Elements.sup;
 import static swiss.sib.swissprot.sjh.Elements.text;
-import static swiss.sib.swissprot.sjh.Elements.time;
 import static swiss.sib.swissprot.sjh.Elements.ul;
 
 import java.io.BufferedOutputStream;
@@ -39,8 +34,6 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
@@ -58,12 +51,12 @@ import picocli.CommandLine;
 import picocli.CommandLine.Option;
 import swiss.sib.swissprot.PdfDataExtractor.Author;
 import swiss.sib.swissprot.PdfDataExtractor.PdfData;
+import swiss.sib.swissprot.html.Chrome;
 import swiss.sib.swissprot.orcid.OrcidCheckResult;
 import swiss.sib.swissprot.orcid.OrcidChecker;
 import swiss.sib.swissprot.sjh.Attributes;
 import swiss.sib.swissprot.sjh.Comment;
 import swiss.sib.swissprot.sjh.Elements;
-import swiss.sib.swissprot.sjh.attributes.DateTime;
 import swiss.sib.swissprot.sjh.attributes.content.Href;
 import swiss.sib.swissprot.sjh.attributes.content.Rel;
 import swiss.sib.swissprot.sjh.attributes.global.Clazz;
@@ -79,7 +72,6 @@ import swiss.sib.swissprot.sjh.elements.Element;
 import swiss.sib.swissprot.sjh.elements.HTML;
 import swiss.sib.swissprot.sjh.elements.Text;
 import swiss.sib.swissprot.sjh.elements.contenttype.FlowContent;
-import swiss.sib.swissprot.sjh.elements.contenttype.MetaContent;
 import swiss.sib.swissprot.sjh.elements.embedded.Img;
 import swiss.sib.swissprot.sjh.elements.grouping.DD;
 import swiss.sib.swissprot.sjh.elements.grouping.DL;
@@ -88,10 +80,7 @@ import swiss.sib.swissprot.sjh.elements.grouping.Div;
 import swiss.sib.swissprot.sjh.elements.grouping.DtOrDd;
 import swiss.sib.swissprot.sjh.elements.grouping.LI;
 import swiss.sib.swissprot.sjh.elements.grouping.OL;
-import swiss.sib.swissprot.sjh.elements.grouping.P;
 import swiss.sib.swissprot.sjh.elements.meta.Head;
-import swiss.sib.swissprot.sjh.elements.meta.Style;
-import swiss.sib.swissprot.sjh.elements.meta.Title;
 import swiss.sib.swissprot.sjh.elements.sections.Body;
 import swiss.sib.swissprot.sjh.elements.sections.Footer;
 import swiss.sib.swissprot.sjh.elements.sections.Header;
@@ -102,7 +91,6 @@ import swiss.sib.swissprot.sjh.elements.sections.header.H3;
 import swiss.sib.swissprot.sjh.elements.text.A;
 import swiss.sib.swissprot.sjh.elements.text.Span;
 import swiss.sib.swissprot.sjh.elements.text.Sup;
-import swiss.sib.swissprot.sjh.elements.text.Time;
 
 /**
  *
@@ -204,7 +192,7 @@ public class App {
 		}
 
 		List<Section> mainList = grouped.entrySet().stream().map(this::makeSection).toList();
-		Head head = pageHead(fullConferenceTitle);
+		Head head = Chrome.head(fullConferenceTitle, runChecks);
 
 		Stream<FlowContent> tocHheader = of(h2(new Text("Table of Contents")), text("\n"));
 		Stream<FlowContent> articles = Stream.concat(Stream.of(preface(preface)), mainList.stream());
@@ -225,11 +213,9 @@ public class App {
 
 		var editorsElement = editors(preface, editors);
 
-		Footer footer = footerSection(submittingEditor);
+		Footer footer = Chrome.footerSection(submittingEditor);
 		Stream<Element> pc = of(headerSection(),
 				Elements.main(article(acronymTitle, fullTitle, ceurloctime, editorsElement, content)), footer);
-
-//				property="schema:dateCreated">
 
 		Body body = new Body(empty(), pc);
 
@@ -278,39 +264,6 @@ public class App {
 			PdfData pdfData = PdfDataExtractor.extract(document);
 			return new Submission(pdfData, document.getNumberOfPages(), f);
 		}
-	}
-
-	private Footer footerSection(String submittingEditor) {
-		LocalDateTime now = LocalDateTime.now();
-		String nows = DateTimeFormatter.ISO_LOCAL_DATE.format(now);
-		int year = now.getYear();
-		Time pubtime = time(clazz("CEURPUBDATE"), new DateTime(nows), text(year + "-MM-DD"));
-		Time subtime = time(clazz("CEURSUBDATE"), new DateTime(now), text(nows));
-		P p2 = p(pubtime, text(": published on CEUR Workshop Proceedings (CEUR-WS.org, ISSN 1613-0073) |"),
-				a(href("https://validator.w3.org/nu/?doc=http%3A%2F%2Fceur-ws.org%2FVol-XXX%2F"), text("valid HTML5"),
-						text("|")));
-
-		P p1 = p(subtime,
-				text(": submitted by " + submittingEditor + ", metadata incl. bibliographic data published under "),
-				a(href("https://creativecommons.org/publicdomain/zero/1.0/"), text("Creative Commons CC0")));
-		Footer footer = footer(p1, p2);
-		return footer;
-	}
-
-	private Head pageHead(String fullConferenceTitle) {
-		String t = "CEUR-WS.org/Vol-XXX - " + fullConferenceTitle;
-		List<MetaContent> meta = new ArrayList<>();
-		meta.add(new Comment("CEURVERSION=2020-07-09"));
-		meta.add(meta("viewport", "width=device-width, initial-scale=1.0", null));
-		meta.add(link(href("https://ceur-ws.org/ceur-ws.css"), new Rel("stylesheet")));
-		meta.add(link(href("https://ceur-ws.org/ceur-ws-semantic.css"), new Rel("stylesheet")));
-		meta.add(new Comment("CEURLANG=eng "));
-		if (runChecks) {
-			meta.add(new Style(new Text(".failure {color:red}")));
-		}
-
-		Head head = new Head(new Title(new Text(t)), meta.stream());
-		return head;
 	}
 
 	private Div editors(Submission preface, File editors) throws IOException {
@@ -449,16 +402,17 @@ public class App {
 		FlowContent pages = pages2.content();
 
 		DL authors = authors(sub.data.authors(), paperId);
-		Stream<FlowContent> childeren ;
-		if (runChecks && ! sub.data.hasLibertinus()) {
-			childeren = of(paperTitle, pages, authors, failure("Missing Libertinus fonts"));
-		} else {
-			childeren = of(paperTitle, pages, authors);	
+		List<FlowContent> childeren = new ArrayList<>();
+		childeren.addAll(List.of(paperTitle, pages, authors));
+		if (runChecks) {
+			if (!sub.data.hasLibertinus()) {
+				childeren.addLast(failure("Missing Libertinus fonts"));
+			}
+			childeren.addLast(new Comment("Originally " + sub.originalFileName()));
 		}
-
 		String listValue = Integer.toString(sub.id());
 		Stream<GlobalAttribute> id = Stream.of(id("paper_" + listValue));
-		LI article = new LI(id, typeof, childeren, new Value(listValue));
+		LI article = new LI(id, typeof, childeren.stream(), new Value(listValue));
 		return article;
 	}
 
@@ -523,6 +477,10 @@ public class App {
 			this.data = data;
 			this.pages = pages;
 			this.pdfFile = pdfFile;
+		}
+
+		public String originalFileName() {
+			return pdfFile.getName();
 		}
 
 		public int id() {
