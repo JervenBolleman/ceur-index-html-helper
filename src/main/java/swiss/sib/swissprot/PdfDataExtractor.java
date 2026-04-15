@@ -8,10 +8,14 @@ import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import org.apache.pdfbox.cos.COSName;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.pdmodel.PDDocumentCatalog;
 import org.apache.pdfbox.pdmodel.PDDocumentInformation;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDResources;
 import org.apache.pdfbox.pdmodel.common.PDMetadata;
+import org.apache.pdfbox.pdmodel.font.PDFont;
 import org.apache.pdfbox.text.PDFTextStripper;
 import org.apache.pdfbox.text.TextPosition;
 import org.eclipse.rdf4j.common.exception.RDF4JException;
@@ -52,7 +56,7 @@ public class PdfDataExtractor {
 		}
 	}
 
-	public static record PdfData(String title, List<Author> authors) {
+	public static record PdfData(String title, List<Author> authors, boolean hasLibertinus) {
 
 	}
 
@@ -60,6 +64,7 @@ public class PdfDataExtractor {
 		PDDocumentInformation doci = doc.getDocumentInformation();
 		String title = doci.getTitle();
 		PDDocumentCatalog cata = doc.getDocumentCatalog();
+		boolean hasLibertinus = detectLibertinusFonts(doc);
 		PDMetadata metadata = cata.getMetadata();
 		List<String> authorNames = new ArrayList<>();
 		FontAwareStripper stripper = new FontAwareStripper();
@@ -67,16 +72,33 @@ public class PdfDataExtractor {
 		if (title == null) {
 			title = findTitleByLargestFont(stripper);
 		}
-		extractAuthorNamesFromMetadata(metadata, authorNames);
+		if (metadata != null)
+			extractAuthorNamesFromMetadata(metadata, authorNames);
 		if (authorNames.isEmpty()) {
 			authorNames = findAuthorsBeforeAbstract(stripper);
 		}
 		List<Author> authors = authorNames.stream().map(Author::new).toList();
 		findEmailsAndOrcids(doc, authors);
 		if (title != null) {
-			return new PdfData(title, authors);
+			return new PdfData(title, authors, hasLibertinus);
 		}
 		return null;
+	}
+
+	private static boolean detectLibertinusFonts(PDDocument doc) throws IOException {
+		boolean hasLibertinus = false;
+		for (PDPage page : doc.getPages()) {
+            PDResources resources = page.getResources();
+            if (resources != null) {
+                for (COSName fontName : resources.getFontNames()) {
+                    PDFont font = resources.getFont(fontName);
+                    if (font.isEmbedded() && font.getName() != null && font.getName().contains("Libertinus")) {
+                    	hasLibertinus = true;
+                    }
+                }
+            }
+        }
+		return hasLibertinus;
 	}
 
 	private static void findEmailsAndOrcids(PDDocument doc, List<Author> authors) throws IOException {
@@ -121,6 +143,7 @@ public class PdfDataExtractor {
 
 	private static void extractAuthorNamesFromMetadata(PDMetadata metadata, List<String> authorNames) {
 		try (var in = metadata.createInputStream()) {
+			
 			String xmlAndrdfxml = new String(in.readAllBytes(), StandardCharsets.UTF_8);
 			int start = xmlAndrdfxml.indexOf("<rdf");
 			int end = xmlAndrdfxml.lastIndexOf("RDF>");
@@ -198,7 +221,9 @@ public class PdfDataExtractor {
 		if (authors.charAt(authors.length() - 1) == '.')
 			authors.setLength(authors.length() - 2);
 		int lastAnd = authors.lastIndexOf(" and ");
-		authors.replace(lastAnd, lastAnd + 5, ", ");
+		if (lastAnd >0) {
+			authors.replace(lastAnd, lastAnd + 5, ", ");
+		}
 		Pattern removeAffiliations = Pattern.compile("\\d{1," + maxAffiliationDigits + "} ?,");
 		String noTokens = COR_MARKS_ETC.matcher(authors).replaceAll(" ");
 		Matcher matcher = removeAffiliations.matcher(noTokens);

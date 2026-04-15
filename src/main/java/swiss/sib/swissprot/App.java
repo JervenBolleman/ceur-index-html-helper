@@ -37,6 +37,7 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -57,6 +58,8 @@ import picocli.CommandLine;
 import picocli.CommandLine.Option;
 import swiss.sib.swissprot.PdfDataExtractor.Author;
 import swiss.sib.swissprot.PdfDataExtractor.PdfData;
+import swiss.sib.swissprot.orcid.OrcidCheckResult;
+import swiss.sib.swissprot.orcid.OrcidChecker;
 import swiss.sib.swissprot.sjh.Attributes;
 import swiss.sib.swissprot.sjh.Comment;
 import swiss.sib.swissprot.sjh.Elements;
@@ -76,6 +79,7 @@ import swiss.sib.swissprot.sjh.elements.Element;
 import swiss.sib.swissprot.sjh.elements.HTML;
 import swiss.sib.swissprot.sjh.elements.Text;
 import swiss.sib.swissprot.sjh.elements.contenttype.FlowContent;
+import swiss.sib.swissprot.sjh.elements.contenttype.MetaContent;
 import swiss.sib.swissprot.sjh.elements.embedded.Img;
 import swiss.sib.swissprot.sjh.elements.grouping.DD;
 import swiss.sib.swissprot.sjh.elements.grouping.DL;
@@ -86,8 +90,7 @@ import swiss.sib.swissprot.sjh.elements.grouping.LI;
 import swiss.sib.swissprot.sjh.elements.grouping.OL;
 import swiss.sib.swissprot.sjh.elements.grouping.P;
 import swiss.sib.swissprot.sjh.elements.meta.Head;
-import swiss.sib.swissprot.sjh.elements.meta.Link;
-import swiss.sib.swissprot.sjh.elements.meta.Meta;
+import swiss.sib.swissprot.sjh.elements.meta.Style;
 import swiss.sib.swissprot.sjh.elements.meta.Title;
 import swiss.sib.swissprot.sjh.elements.sections.Body;
 import swiss.sib.swissprot.sjh.elements.sections.Footer;
@@ -105,6 +108,7 @@ import swiss.sib.swissprot.sjh.elements.text.Time;
  *
  */
 public class App {
+	private static final Clazz FAILURE = clazz("failure");
 	private static final String PREFACE_KEY = "preface";
 	private static final Rel SCHEMA_PAGE_START = new Rel("schema:pageStart");
 	private static final Rel SCHEMA_PAGE_END = new Rel("schema:pageEnd");
@@ -156,8 +160,14 @@ public class App {
 	@Option(names = { "-n", "--submitting-editor" }, description = "Your name as submitting editor", required = true)
 	String submittingEditor;
 
+	@Option(names = {
+			"--run-checks" }, description = "Your name as submitting editor", required = false, defaultValue = "false")
+	boolean runChecks;
+
 	@Option(names = { "-h", "--help" }, usageHelp = true, description = "display a help message")
 	private boolean helpRequested = false;
+
+	private final OrcidChecker oc = new OrcidChecker();
 
 	public static void main(String[] args) throws IOException {
 		App app = new App();
@@ -177,11 +187,14 @@ public class App {
 			String city, String monthDay, int year, File editors, String submittingEditor) throws IOException {
 
 		Map<String, List<Submission>> grouped = groupPdfsPerDirectory(inputDir);
+		if (!outputDir.exists()) {
+			Files.createDirectories(outputDir.toPath());
+		}
 
 		for (Map.Entry<String, List<Submission>> en : grouped.entrySet()) {
 			for (Submission sub : en.getValue()) {
 				File paperPdf = new File(outputDir, "paper_" + sub.id() + ".pdf");
-				Files.copy(sub.pdfFile.toPath(), paperPdf.toPath());
+				Files.copy(sub.pdfFile.toPath(), paperPdf.toPath(), StandardCopyOption.REPLACE_EXISTING);
 			}
 		}
 		Submission preface = null;
@@ -220,6 +233,9 @@ public class App {
 
 		Body body = new Body(empty(), pc);
 
+		if (!outputDir.exists()) {
+			Files.createDirectories(outputDir.toPath());
+		}
 		File index = new File(outputDir, "index.html");
 		try (OutputStream out = new BufferedOutputStream(new FileOutputStream(index))) {
 			new HTML(of(lang("en")), head, body).render(out);
@@ -283,15 +299,24 @@ public class App {
 
 	private Head pageHead(String fullConferenceTitle) {
 		String t = "CEUR-WS.org/Vol-XXX - " + fullConferenceTitle;
-		Meta viewport = meta("viewport", "width=device-width, initial-scale=1.0", null);
-		Link css = link(href("https://ceur-ws.org/ceur-ws.css"), new Rel("stylesheet"));
-		Link csssemantic = link(href("https://ceur-ws.org/ceur-ws-semantic.css"), new Rel("stylesheet"));
-		Head head = new Head(new Title(new Text(t)), Stream.of(new Comment("CEURVERSION=2020-07-09"), css, csssemantic,
-				viewport, new Comment("CEURLANG=eng ")));
+		List<MetaContent> meta = new ArrayList<>();
+		meta.add(new Comment("CEURVERSION=2020-07-09"));
+		meta.add(meta("viewport", "width=device-width, initial-scale=1.0", null));
+		meta.add(link(href("https://ceur-ws.org/ceur-ws.css"), new Rel("stylesheet")));
+		meta.add(link(href("https://ceur-ws.org/ceur-ws-semantic.css"), new Rel("stylesheet")));
+		meta.add(new Comment("CEURLANG=eng "));
+		if (runChecks) {
+			meta.add(new Style(new Text(".failure {color:red}")));
+		}
+
+		Head head = new Head(new Title(new Text(t)), meta.stream());
 		return head;
 	}
 
 	private Div editors(Submission preface, File editors) throws IOException {
+		if (preface == null) {
+			return new Div(empty(), of(span(FAILURE, text("Missing preface: can't extract editors"))));
+		}
 		Iterator<String> affiliations = Files.readAllLines(editors.toPath()).iterator();
 		Iterator<Author> iter = preface.data.authors().iterator();
 		List<DtOrDd> names = new ArrayList<>();
@@ -319,11 +344,13 @@ public class App {
 				}
 				String addressIndex = Integer.toString(addresses.indexOf(adress) + 1);
 				Sup sup = sup(a(href("#authors-org" + addressIndex), text(addressIndex)));
+				Stream<FlowContent> extra = of(ns, sup);
+				extra = checkOrcid(editor, ns, sup, extra);
 				RdfaAttribute about = new Resource("https://orcid.org/" + orcid);
 				if (orcid.isBlank()) {
 					about = new Resource("#editor-" + authorIndex);
 				}
-				DD authordd = new DD(of(id("author" + authorIndex++)), of(BIBO_EDITOR, about), of(ns, sup));
+				DD authordd = new DD(of(id("author" + authorIndex++)), of(BIBO_EDITOR, about), extra);
 				names.add(authordd);
 			}
 		}
@@ -340,13 +367,26 @@ public class App {
 
 	}
 
-	private FlowContent preface(Submission preface) {
+	private Stream<FlowContent> checkOrcid(Author editor, Span ns, Sup sup, Stream<FlowContent> extra) {
+		if (runChecks) {
+			OrcidCheckResult checkOne = oc.checkOne(editor);
+			if (!checkOne.isOk()) {
+				extra = of(ns, sup, span(FAILURE, text(checkOne.name())));
+			}
+		}
+		return extra;
+	}
 
-		A linkToPrefacePdf = a(href("preface.pdf"), new Text(PREFACE_KEY));
-		LI li = new LI(of(id(PREFACE_KEY)), Stream.of(linkToPrefacePdf), new Value(Integer.toString(preface.id)));
-		OL prefaceOl = new OL(Stream.empty(), hasPart(), Stream.of(li));
-		// of(Datatype.RDF_HTML, SCHEMA_DESCRIPTION)
-		return new Div(empty(), of(prefaceOl));
+	private FlowContent preface(Submission preface) {
+		if (preface == null) {
+			return new Div(empty(), of(span(FAILURE, new Text("Preface file is missing"))));
+		} else {
+			A linkToPrefacePdf = a(href("preface.pdf"), new Text(PREFACE_KEY));
+			LI li = new LI(of(id(PREFACE_KEY)), Stream.of(linkToPrefacePdf), new Value(Integer.toString(preface.id)));
+			OL prefaceOl = new OL(Stream.empty(), hasPart(), Stream.of(li));
+			// of(Datatype.RDF_HTML, SCHEMA_DESCRIPTION)
+			return new Div(empty(), of(prefaceOl));
+		}
 	}
 
 	private Header headerSection() {
@@ -396,7 +436,12 @@ public class App {
 		while (title.endsWith(".")) {
 			title = title.substring(0, title.length() - 2);
 		}
-		Span titleSpan = new Span(ga(CUERTITLE), of(SCHEMA_NAME), of(new Text(title)));
+		Span titleSpan;
+		if (title.isBlank() && runChecks) {
+			titleSpan = failure("Can't extract title, does not seem to be using CEUR template");
+		} else {
+			titleSpan = new Span(ga(CUERTITLE), of(SCHEMA_NAME), of(new Text(title)));
+		}
 
 		String paperId = "paper_" + sub.id() + ".pdf";
 		A paperTitle = new A(of(titleSpan), href(paperId), rel("schema:url"));
@@ -404,13 +449,21 @@ public class App {
 		FlowContent pages = pages2.content();
 
 		DL authors = authors(sub.data.authors(), paperId);
-
-		Stream<FlowContent> childeren = of(paperTitle, pages, authors);
+		Stream<FlowContent> childeren ;
+		if (runChecks && ! sub.data.hasLibertinus()) {
+			childeren = of(paperTitle, pages, authors, failure("Missing Libertinus fonts"));
+		} else {
+			childeren = of(paperTitle, pages, authors);	
+		}
 
 		String listValue = Integer.toString(sub.id());
 		Stream<GlobalAttribute> id = Stream.of(id("paper_" + listValue));
 		LI article = new LI(id, typeof, childeren, new Value(listValue));
 		return article;
+	}
+
+	private Span failure(String string) {
+		return span(FAILURE, text(string));
 	}
 
 	private DL authors(List<Author> authors, String paperId) {
@@ -453,7 +506,7 @@ public class App {
 		List<PdfDataExtractor.Author> authors = sub.data.authors();
 		Span end = new Span(empty(), of(SCHEMA_PAGE_END, Datatype.XSD_NON_NEGATIVE_INTEGER),
 				of(new Text(Integer.toString(pageStart + numberOfPages))));
-		pageStart += numberOfPages + 1;
+		pageStart += numberOfPages;
 		Stream<? extends DtOrDd> pagesDtDD = of(dt(text("pages")),
 				new DD(of(clazz("CEURPAGES")), of(start, new Text("-"), end)));
 

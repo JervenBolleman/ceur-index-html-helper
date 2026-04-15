@@ -12,5 +12,6 @@ module oa2cuer {
 	requires rdf4j.common.io;
 	requires rdf4j.model.vocabulary;
 	requires info.picocli;
+	requires java.net.http;
 }
 
