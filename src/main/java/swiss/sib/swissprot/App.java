@@ -432,7 +432,14 @@ public class App {
 	private DD authorSection(Author a, String paperId, int authorIndex) {
 		Clazz clazz = clazz("CEURAUTHOR");
 		if (a.orcid() != null) {
-			Stream<Element> linkContent = of(new Text(a.name()));
+			Text name = new Text(a.name());
+			Stream<Element> linkContent = of(name);
+			if (runChecks) {
+				OrcidCheckResult checkOne = oc.checkOne(a);
+				if (!checkOne.isOk()) {
+					linkContent = of(name, text(" "), span(FAILURE, text(checkOne.name())));
+				}
+			}
 			return authorNameWithOrcid(clazz, a.orcid(), linkContent);
 		}
 		return authorWithoutOrcid(a, clazz, authorIndex, paperId);

@@ -55,8 +55,10 @@ public class OrcidChecker {
 					.setHeader("user-agent", "ceur-index-helper").uri(uri).build();
 			try {
 				HttpResponse<InputStream> i = hc.send(r, BodyHandlers.ofInputStream());
-				if (i.statusCode() != 200) {
-					return new OrcidCheckResult(FAIL);
+				if (i.statusCode() == 404) {
+					return new OrcidCheckResult(FAIL, "orcid service replied 404 not found for "+a.orcid());
+				}else if (i.statusCode() != 200) {
+					return new OrcidCheckResult(FAIL, "orcid service did not reply");
 				} else {
 					try (InputStream body = i.body()) {
 						OrcidData od = parseOrcidData(body);
@@ -66,9 +68,9 @@ public class OrcidChecker {
 				}
 			} catch (InterruptedException e) {
 				Thread.interrupted();
-				return new OrcidCheckResult(FAIL);
+				return new OrcidCheckResult(FAIL, "orcid check interupted");
 			} catch (IOException e) {
-				return new OrcidCheckResult(FAIL);
+				return new OrcidCheckResult(FAIL, "orcid check io failure");
 			}
 		} catch (URISyntaxException e) {
 			throw new IllegalStateException(e);
@@ -105,10 +107,5 @@ public class OrcidChecker {
 				.map(Value::stringValue).toList();
 		OrcidData od = new OrcidData(givenNames, familyNames);
 		return od;
-	}
-
-	public void check(Author editor) {
-		// TODO Auto-generated method stub
-		
 	}
 }
