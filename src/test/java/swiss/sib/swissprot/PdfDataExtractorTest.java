@@ -23,6 +23,9 @@ class PdfDataExtractorTest {
 	static final String LIBREOFFICE_PDF = "libreoffice.pdf";
 	static final String LATEX_PDF = "latex.pdf";
 	static final String LATEX_ORCIDS_PDF = "latex-oricds.pdf";
+	static final String MISSING = "missing_one_orcid.pdf";
+	static final String NBSP = "non_breaking_space_in_name.pdf";
+
 	@TempDir
 	Path temp;
 
@@ -90,6 +93,32 @@ class PdfDataExtractorTest {
 			Author last = pdfData.authors().getLast();
 			assertEquals("Andra Waagmeester", last.name());
 			assertEquals("0000-0001-9773-4008", last.orcid());
+		}
+	}
+	
+	@Test
+	void missing() throws IOException {
+		Path file = copy(MISSING);
+
+		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file.toFile()))) {
+			PdfData pdfData = PdfDataExtractor.extract(document);
+			assertNotNull(pdfData);
+			Author first = pdfData.authors().get(4);
+			assertEquals("Mark D. Wilkinson", first.name());
+			assertEquals("0000-0001-6960-357X", first.orcid());
+		}
+	}
+	
+	@Test
+	void nbsp() throws IOException {
+		Path file = copy(NBSP);
+
+		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file.toFile()))) {
+			PdfData pdfData = PdfDataExtractor.extract(document);
+			assertNotNull(pdfData);
+			Author first = pdfData.authors().get(1);
+			assertEquals("Jelmer M. van Lieshout", first.name());
+			assertEquals("0009-0008-2500-4717", first.orcid());
 		}
 	}
 }

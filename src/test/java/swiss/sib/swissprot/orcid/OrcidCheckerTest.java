@@ -12,7 +12,7 @@ import org.junit.jupiter.api.Test;
 
 import swiss.sib.swissprot.PdfDataExtractor.Author;
 
-class OcidCheckerTest {
+class OrcidCheckerTest {
 	private String jerven = """
 			@prefix foaf: <http://xmlns.com/foaf/0.1/> .
 			@prefix gn:   <http://www.geonames.org/ontology#> .

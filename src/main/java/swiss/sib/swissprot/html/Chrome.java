@@ -38,7 +38,7 @@ public class Chrome {
 		meta.add(link(href("https://ceur-ws.org/ceur-ws-semantic.css"), new Rel("stylesheet")));
 		meta.add(new Comment("CEURLANG=eng "));
 		if (runChecks) {
-			meta.add(new Style(new Text(".failure {color:red}")));
+			meta.add(new Style(new Text(".failure {color:red} .warning {color:orange}")));
 		}
 
 		return new Head(new Title(new Text(t)), meta.stream());

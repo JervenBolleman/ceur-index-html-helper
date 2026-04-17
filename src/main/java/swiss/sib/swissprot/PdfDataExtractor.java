@@ -4,6 +4,8 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -54,6 +56,10 @@ public class PdfDataExtractor {
 		public String affiliation() {
 			return affiliation;
 		}
+		
+		public String toString() {
+			return "A: "+name+ '('+orcid+") at "+affiliation;
+		}
 	}
 
 	public static record PdfData(String title, List<Author> authors, boolean hasLibertinus) {
@@ -101,26 +107,48 @@ public class PdfDataExtractor {
 		return hasLibertinus;
 	}
 
-	private static void findEmailsAndOrcids(PDDocument doc, List<Author> authors) throws IOException {
+	private static void findEmailsAndOrcids(PDDocument doc, List<Author> authorsOrig) throws IOException {
+		List<Author> authors = new ArrayList<>();
+		authors.addAll(authorsOrig);
 		PDFTextStripper stripper = new PDFTextStripper();
 		stripper.setStartPage(1);
 		stripper.setEndPage(1);
 		String text = stripper.getText(doc);
 		var orcMatcher = ORCID_PATTERN.matcher(text);
-		int lastAuthorMatchedToOrcid = 0;
 		while (orcMatcher.find()) {
 			String orcid = orcMatcher.group(1).replaceAll("\n", "");
 			String person = orcMatcher.group(2).replaceAll("\n", "");
 			String[] abbrvNameParts = person.split(" ");
-			for (int i = lastAuthorMatchedToOrcid; i < authors.size(); i++) {
-				Author author = authors.get(i);
-				String[] nameParts = author.name.split(" ");
-				if (match(abbrvNameParts, author, nameParts)) {
-					author.orcid = orcid;
-				}
-			}
+			matchOrcids(authors, orcid, abbrvNameParts);
 		}
 
+	}
+
+	private static void matchOrcids(List<Author> authors, String orcid, String[] abbrvNameParts) {
+		for (Iterator<Author> iterator = authors.iterator(); iterator.hasNext();) {
+			Author author = iterator.next();
+			String[] nameParts = splitName(author);
+			
+			
+			if (match(abbrvNameParts, author, nameParts)) {
+				author.orcid = orcid;
+				iterator.remove();
+				return;
+			}
+		}
+	}
+
+	private static String[] splitName(Author author) {
+		List<String> nameParts = new ArrayList<>();
+		nameParts.addAll(Arrays.asList(author.name.split(" ")));
+		for (int i = 1; i < nameParts.size(); i++) {
+			String np = nameParts.get(i);
+			if (np.endsWith(".")) {
+				nameParts.set(i-1, nameParts.get(i-1)+np);
+				nameParts.remove(i);
+			}
+		}
+		return nameParts.toArray(new String[] {});
 	}
 
 	private static boolean match(String[] abbrvNameParts, Author author, String[] nameParts) {
@@ -141,6 +169,7 @@ public class PdfDataExtractor {
 		}
 	}
 
+	private static final Pattern TILDE = Pattern.compile("~", Pattern.LITERAL);
 	private static void extractAuthorNamesFromMetadata(PDMetadata metadata, List<String> authorNames) {
 		try (var in = metadata.createInputStream()) {
 			
@@ -155,8 +184,9 @@ public class PdfDataExtractor {
 							&& seq.getPredicate().getNamespace().equals(RDF.NAMESPACE)) {
 						String authorName = seq.getObject().stringValue();
 						// This is the person whom made the template not the actual author.
+						
 						if (!authorName.equals(ALEKSANDR_OMETOV_TAU)) {
-							authorNames.add(authorName);
+							authorNames.add(TILDE.matcher(authorName).replaceAll(" "));
 						}
 					}
 				}

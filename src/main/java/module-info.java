@@ -13,5 +13,9 @@ module oa2cuer {
 	requires rdf4j.model.vocabulary;
 	requires info.picocli;
 	requires java.net.http;
+	requires org.slf4j;
+	requires tess4j;
+	requires java.desktop;
+	requires org.apache.pdfbox.tools;
 }
 

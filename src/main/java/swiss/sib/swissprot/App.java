@@ -38,14 +38,19 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
+import java.util.Set;
 import java.util.TreeMap;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import picocli.CommandLine;
 import picocli.CommandLine.Option;
@@ -96,7 +101,9 @@ import swiss.sib.swissprot.sjh.elements.text.Sup;
  *
  */
 public class App {
+	private static final Logger log = LoggerFactory.getLogger(App.class);
 	private static final Clazz FAILURE = clazz("failure");
+	private static final Clazz WARNING = clazz("warning");
 	private static final String PREFACE_KEY = "preface";
 	private static final Rel SCHEMA_PAGE_START = new Rel("schema:pageStart");
 	private static final Rel SCHEMA_PAGE_END = new Rel("schema:pageEnd");
@@ -113,6 +120,9 @@ public class App {
 	private static final Property SCHEMA_EDITOR = new Property("schema:editor");
 	private static final Rel OWL_SAME_AS = new Rel("owl:sameAs");
 	private static final Clazz ORCID_CLAZZ = clazz("orcid");
+	
+	//Team authors are not allowed at CEUR warn about that
+	private static final Set<String> COULD_BE_A_TEAM = Set.of("team", "registry", "consortium", "project", "institute");
 
 	@Option(names = "-i", description = "input directory containing a preface.pdf and directories for each section containing all the paper pdfs", required = true)
 	public File inputDir;
@@ -151,11 +161,14 @@ public class App {
 	@Option(names = {
 			"--run-checks" }, description = "Your name as submitting editor", required = false, defaultValue = "false")
 	boolean runChecks;
+	
+	@Option(names = {"--agreements" }, description = "Directory with all the agreements", required = true)
+	File agreements;
 
 	@Option(names = { "-h", "--help" }, usageHelp = true, description = "display a help message")
 	private boolean helpRequested = false;
 
-	private final OrcidChecker oc = new OrcidChecker();
+	private OrcidChecker oc;
 
 	public static void main(String[] args) throws IOException {
 		App app = new App();
@@ -173,16 +186,14 @@ public class App {
 
 	void convert(File inputDir, File outputDir, String fullConferenceTitle, String shortConferenceTitle, String confurl,
 			String city, String monthDay, int year, File editors, String submittingEditor) throws IOException {
-
 		Map<String, List<Submission>> grouped = groupPdfsPerDirectory(inputDir);
-		if (!outputDir.exists()) {
-			Files.createDirectories(outputDir.toPath());
-		}
+		File orcidCacheDir = createOutputDirectories(outputDir);
+		oc = new OrcidChecker(orcidCacheDir);
 
 		for (Map.Entry<String, List<Submission>> en : grouped.entrySet()) {
 			for (Submission sub : en.getValue()) {
 				File paperPdf = new File(outputDir, "paper_" + sub.id() + ".pdf");
-				Files.copy(sub.pdfFile.toPath(), paperPdf.toPath(), StandardCopyOption.REPLACE_EXISTING);
+				Files.copy(sub.pdfFile().toPath(), paperPdf.toPath(), StandardCopyOption.REPLACE_EXISTING);
 			}
 		}
 		Submission preface = null;
@@ -228,6 +239,18 @@ public class App {
 		}
 	}
 
+	private File createOutputDirectories(File outputDir) throws IOException {
+		if (!outputDir.exists()) {
+			Files.createDirectories(outputDir.toPath());
+		}
+		
+		File orcidCacheDir = new File(outputDir, ".orcid-cache");
+		if (! orcidCacheDir.exists() && !orcidCacheDir.mkdir()) {
+			log.error("Can't create orcid cache directory");
+		}
+		return orcidCacheDir;
+	}
+
 	private Map<String, List<Submission>> groupPdfsPerDirectory(File inputDir) throws IOException {
 		Comparator<String> papersFirst = new CompareLongShortDemoOther();
 		Map<String, List<Submission>> groupedPdfs = new TreeMap<>(papersFirst);
@@ -236,7 +259,7 @@ public class App {
 			if (f.isFile() && "preface.pdf".equals(f.getName())) {
 
 				Submission pre = extract(f);
-				pre.id = 1;
+				pre.setId(1);
 				groupedSubmissions.put(PREFACE_KEY, List.of(pre));
 			} else if (f.isDirectory()) {
 				for (File f1 : f.listFiles()) {
@@ -252,7 +275,7 @@ public class App {
 		for (var en : groupedPdfs.entrySet()) {
 			en.getValue().sort((a, b) -> a.title().compareTo(b.title()));
 			for (var sub : en.getValue()) {
-				sub.id = id++;
+				sub.setId(id++);
 			}
 			groupedSubmissions.put(en.getKey(), en.getValue());
 		}
@@ -271,7 +294,7 @@ public class App {
 			return new Div(empty(), of(span(FAILURE, text("Missing preface: can't extract editors"))));
 		}
 		Iterator<String> affiliations = Files.readAllLines(editors.toPath()).iterator();
-		Iterator<Author> iter = preface.data.authors().iterator();
+		Iterator<Author> iter = preface.data().authors().iterator();
 		List<DtOrDd> names = new ArrayList<>();
 		DT editedBy = dt(text("Edited by"));
 		names.add(editedBy);
@@ -335,7 +358,7 @@ public class App {
 			return new Div(empty(), of(span(FAILURE, new Text("Preface file is missing"))));
 		} else {
 			A linkToPrefacePdf = a(href("preface.pdf"), new Text(PREFACE_KEY));
-			LI li = new LI(of(id(PREFACE_KEY)), Stream.of(linkToPrefacePdf), new Value(Integer.toString(preface.id)));
+			LI li = new LI(of(id(PREFACE_KEY)), Stream.of(linkToPrefacePdf), new Value(Integer.toString(preface.id())));
 			OL prefaceOl = new OL(Stream.empty(), hasPart(), Stream.of(li));
 			// of(Datatype.RDF_HTML, SCHEMA_DESCRIPTION)
 			return new Div(empty(), of(prefaceOl));
@@ -389,23 +412,26 @@ public class App {
 		while (title.endsWith(".")) {
 			title = title.substring(0, title.length() - 2);
 		}
-		Span titleSpan;
+		List<Element> titleSpan = new ArrayList<>();
 		if (title.isBlank() && runChecks) {
-			titleSpan = failure("Can't extract title, does not seem to be using CEUR template");
+			titleSpan.add(failure("Can't extract title, does not seem to be using CEUR template"));
 		} else {
-			titleSpan = new Span(ga(CUERTITLE), of(SCHEMA_NAME), of(new Text(title)));
+			titleSpan.add(new Span(ga(CUERTITLE), of(SCHEMA_NAME), of(new Text(title))));
+			if (! isSoft(title) && runChecks) {
+				titleSpan.add(span(WARNING, text( "Title is in title case, CEUR does not like this")));
+			}
 		}
 
 		String paperId = "paper_" + sub.id() + ".pdf";
-		A paperTitle = new A(of(titleSpan), href(paperId), rel("schema:url"));
+		A paperTitle = new A(titleSpan.stream(), href(paperId), rel("schema:url"));
 		PagesAndOrcids pages2 = pages(sub);
 		FlowContent pages = pages2.content();
 
-		DL authors = authors(sub.data.authors(), paperId);
+		DL authors = authors(sub.data().authors(), paperId);
 		List<FlowContent> childeren = new ArrayList<>();
 		childeren.addAll(List.of(paperTitle, pages, authors));
 		if (runChecks) {
-			if (!sub.data.hasLibertinus()) {
+			if (!sub.data().hasLibertinus()) {
 				childeren.addLast(failure("Missing Libertinus fonts"));
 			}
 			childeren.addLast(new Comment("Originally " + sub.originalFileName()));
@@ -414,6 +440,24 @@ public class App {
 		Stream<GlobalAttribute> id = Stream.of(id("paper_" + listValue));
 		LI article = new LI(id, typeof, childeren.stream(), new Value(listValue));
 		return article;
+	}
+
+	private static Pattern SPACE = Pattern.compile(" ");
+
+	static boolean isSoft(String title) {
+		String[] split = SPACE.split(title);
+		if (split.length < 2)
+			return false;
+		int words = split.length - 1;
+		int startsWithCap = 0;
+		for (int i = 0; i < split.length; i++) {
+			String word = split[i];
+			if (!word.toUpperCase(Locale.US).equals(word) && Character.isUpperCase(word.charAt(0))) {
+				startsWithCap++;
+			}
+		}
+		float per = (float) startsWithCap / (float) words ;
+		return per < 0.5;
 	}
 
 	private Span failure(String string) {
@@ -433,14 +477,23 @@ public class App {
 		Clazz clazz = clazz("CEURAUTHOR");
 		if (a.orcid() != null) {
 			Text name = new Text(a.name());
-			Stream<Element> linkContent = of(name);
+			List<Element> linkContent = new ArrayList<>();
+			linkContent.add(name);
 			if (runChecks) {
 				OrcidCheckResult checkOne = oc.checkOne(a);
 				if (!checkOne.isOk()) {
-					linkContent = of(name, text(" "), span(FAILURE, text(checkOne.name())));
+					linkContent.add(text(" "));
+					linkContent.add(span(FAILURE, text(checkOne.name())));
+				}
+				String lc = a.name().toLowerCase(Locale.ROOT);
+				for (String teamTest:COULD_BE_A_TEAM) {
+					if (lc.contains(teamTest)) {
+						linkContent.add(text(" "));
+						linkContent.add(span(WARNING, text("Team authors are not allowed by CEUR")));
+					}
 				}
 			}
-			return authorNameWithOrcid(clazz, a.orcid(), linkContent);
+			return authorNameWithOrcid(clazz, a.orcid(), linkContent.stream());
 		}
 		return authorWithoutOrcid(a, clazz, authorIndex, paperId);
 	}
@@ -463,8 +516,8 @@ public class App {
 		Span start = new Span(empty(), of(SCHEMA_PAGE_START, Datatype.XSD_NON_NEGATIVE_INTEGER),
 				of(new Text(Integer.toString(pageStart))));
 
-		int numberOfPages = sub.pages;
-		List<PdfDataExtractor.Author> authors = sub.data.authors();
+		int numberOfPages = sub.pages();
+		List<PdfDataExtractor.Author> authors = sub.data().authors();
 		Span end = new Span(empty(), of(SCHEMA_PAGE_END, Datatype.XSD_NON_NEGATIVE_INTEGER),
 				of(new Text(Integer.toString(pageStart + numberOfPages))));
 		pageStart += numberOfPages;
@@ -477,30 +530,5 @@ public class App {
 	}
 
 	record PagesAndOrcids(FlowContent content, List<PdfDataExtractor.Author> authors) {
-	}
-
-	private static class Submission {
-		public Submission(PdfData data, int pages, File pdfFile) {
-			this.data = data;
-			this.pages = pages;
-			this.pdfFile = pdfFile;
-		}
-
-		public String originalFileName() {
-			return pdfFile.getName();
-		}
-
-		public int id() {
-			return id;
-		}
-
-		public String title() {
-			return data.title();
-		}
-
-		private int id;
-		private PdfData data;
-		private File pdfFile;
-		private int pages;
 	}
 }
