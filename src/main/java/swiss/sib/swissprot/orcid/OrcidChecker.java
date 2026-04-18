@@ -3,11 +3,15 @@ package swiss.sib.swissprot.orcid;
 import static swiss.sib.swissprot.orcid.OrcidCheckResult.Status.FAIL;
 import static swiss.sib.swissprot.orcid.OrcidCheckResult.Status.OK;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
 import java.net.URISyntaxException;
 import java.net.http.HttpClient;
@@ -38,12 +42,14 @@ public class OrcidChecker {
 	private static final Logger log = LoggerFactory.getLogger(OrcidChecker.class);
 	private static final Pattern ORCID = Pattern.compile("([0-9X]{4})-([0-9X]{4})-([0-9X]{4})-([0-9X]{4})");
 	private final Map<String, OrcidData> cache = new HashMap<>();
-	
+	private final File cacheDir;
+
 	public OrcidChecker(File cacheDir) throws FileNotFoundException, IOException {
 		super();
+		this.cacheDir = cacheDir;
 		Predicate<String> orcidMatcher = ORCID.asMatchPredicate();
-		for (File file:cacheDir.listFiles((n)-> orcidMatcher.test(n.getName()))) {
-			try (FileInputStream fis = new FileInputStream(file)){
+		for (File file : cacheDir.listFiles((n) -> orcidMatcher.test(n.getName()))) {
+			try (FileInputStream fis = new FileInputStream(file)) {
 				OrcidData orcidData = parseOrcidData(fis);
 				cache.put(file.getName(), orcidData);
 			}
@@ -55,18 +61,18 @@ public class OrcidChecker {
 			return authors.map(a -> checkOrcid(a, hc));
 		}
 	}
-	
+
 	public OrcidCheckResult checkOne(Author author) {
 		if (author.orcid() == null)
 			return new OrcidCheckResult(FAIL, "no orcid");
-		
-		
+
 		try (HttpClient hc = HttpClient.newHttpClient()) {
-			return checkOrcid(author, hc);
+			OrcidCheckResult co = checkOrcid(author, hc);
+
+			return co;
 		}
 	}
 
-	
 	private OrcidCheckResult checkOrcid(Author a, HttpClient hc) {
 		if (a.orcid() != null && cache.containsKey(a.orcid())) {
 			return validate(a, cache.get(a.orcid()));
@@ -79,13 +85,22 @@ public class OrcidChecker {
 			try {
 				HttpResponse<InputStream> i = hc.send(r, BodyHandlers.ofInputStream());
 				if (i.statusCode() == 404) {
-					return new OrcidCheckResult(FAIL, "orcid service replied 404 not found for "+a.orcid());
-				}else if (i.statusCode() != 200) {
+					return new OrcidCheckResult(FAIL, "orcid service replied 404 not found for " + a.orcid());
+				} else if (i.statusCode() != 200) {
 					return new OrcidCheckResult(FAIL, "orcid service did not reply");
 				} else {
 					try (InputStream body = i.body()) {
-						OrcidData od = parseOrcidData(body);
+						ByteArrayOutputStream copy = new ByteArrayOutputStream();
+						body.transferTo(copy);
+						ByteArrayInputStream body2 = new ByteArrayInputStream(copy.toByteArray());
+						OrcidData od = parseOrcidData(body2);
 						cache.put(a.orcid(), od);
+						try (ByteArrayInputStream body3 = new ByteArrayInputStream(copy.toByteArray());
+								OutputStream os = new FileOutputStream(new File(cacheDir, a.orcid()))) {
+							body3.transferTo(os);
+						} catch (IOException e) {
+							throw new RuntimeException(e);
+						}
 						return validate(a, od);
 					}
 				}
@@ -102,20 +117,26 @@ public class OrcidChecker {
 
 	}
 
-	public record OrcidData(List<String> givenNames, List<String> familyNames) {
+	public record OrcidData(String prefferedPubName, List<String> givenNames, List<String> familyNames) {
+		public OrcidData(String prefferedPubName) {
+			this(prefferedPubName, List.of(),List.of());
+		}
+
 		public String orcidName() {
-			return Stream.concat(givenNames.stream(), familyNames.stream())
-					.collect(Collectors.joining(" "));
+			if (prefferedPubName != null) {
+				return prefferedPubName;
+			} else {
+				return Stream.concat(givenNames.stream(), familyNames.stream()).collect(Collectors.joining(" "));
+			}
 		}
 	}
-	
-	static OrcidCheckResult validate(Author a, OrcidData od){
 
-		
+	static OrcidCheckResult validate(Author a, OrcidData od) {
+
 		if (od.orcidName().equals(a.name())) {
 			return new OrcidCheckResult(OK);
 		} else {
-			return new OrcidCheckResult(FAIL, "Expected name:"+od.orcidName()+" pdf contained "+ a.name());
+			return new OrcidCheckResult(FAIL, "Expected name:" + od.orcidName() + " pdf contained " + a.name());
 		}
 	}
 
@@ -123,13 +144,19 @@ public class OrcidChecker {
 		StatementCollector m = new StatementCollector();
 		Rio.createParser(RDFFormat.TURTLE).setRDFHandler(m).parse(body);
 		Collection<Statement> statements = m.getStatements();
-		List<String> givenNames = statements.stream()
-				.filter(s -> s.getPredicate().equals(FOAF.GIVEN_NAME)).map(Statement::getObject)
-				.map(Value::stringValue).toList();
-		List<String> familyNames = statements.stream()
-				.filter(s -> s.getPredicate().equals(FOAF.FAMILY_NAME)).map(Statement::getObject)
-				.map(Value::stringValue).toList();
-		OrcidData od = new OrcidData(givenNames, familyNames);
-		return od;
+		List<String> prefferedNames = statements.stream().filter(s -> s.getPredicate().equals(FOAF.NAME))
+				.map(Statement::getObject).map(Value::stringValue).toList();
+		if (prefferedNames.size() > 1){
+			throw new IllegalArgumentException("ORCID record has more preferred names than expected."+prefferedNames.stream().collect(Collectors.joining(" ")));
+		}
+		List<String> givenNames = statements.stream().filter(s -> s.getPredicate().equals(FOAF.GIVEN_NAME))
+				.map(Statement::getObject).map(Value::stringValue).toList();
+		List<String> familyNames = statements.stream().filter(s -> s.getPredicate().equals(FOAF.FAMILY_NAME))
+				.map(Statement::getObject).map(Value::stringValue).toList();
+		if (! prefferedNames.isEmpty()) {
+			return new OrcidData(prefferedNames.getFirst());
+		} else {
+			return new OrcidData(null, givenNames, familyNames);
+		}
 	}
 }

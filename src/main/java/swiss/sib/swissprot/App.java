@@ -162,7 +162,7 @@ public class App {
 			"--run-checks" }, description = "Your name as submitting editor", required = false, defaultValue = "false")
 	boolean runChecks;
 	
-	@Option(names = {"--agreements" }, description = "Directory with all the agreements", required = true)
+	@Option(names = {"--agreements" }, description = "Directory with all the agreements", required = false)
 	File agreements;
 
 	@Option(names = { "-h", "--help" }, usageHelp = true, description = "display a help message")
@@ -452,12 +452,24 @@ public class App {
 		int startsWithCap = 0;
 		for (int i = 0; i < split.length; i++) {
 			String word = split[i];
-			if (!word.toUpperCase(Locale.US).equals(word) && Character.isUpperCase(word.charAt(0))) {
+			if (notAnAbbreviation(word)) {
 				startsWithCap++;
 			}
 		}
 		float per = (float) startsWithCap / (float) words ;
 		return per < 0.5;
+	}
+
+	private static boolean notAnAbbreviation(String word) {
+		if (!word.toUpperCase(Locale.US).equals(word) && Character.isUpperCase(word.charAt(0))) {
+			for (int i=1;i < word.length() -1;i++) {
+				if (Character.isUpperCase(word.charAt(i))){
+					return false;
+				}
+			}
+			return true;
+		}
+		return false;
 	}
 
 	private Span failure(String string) {
