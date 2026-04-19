@@ -136,7 +136,7 @@ public class OrcidChecker {
 		if (od.orcidName().equals(a.name())) {
 			return new OrcidCheckResult(OK);
 		} else {
-			return new OrcidCheckResult(FAIL, "Expected name:" + od.orcidName() + " pdf contained " + a.name());
+			return new OrcidCheckResult(FAIL, "ORCID record name:" + od.orcidName() + " pdf contained:" + a.name());
 		}
 	}
 

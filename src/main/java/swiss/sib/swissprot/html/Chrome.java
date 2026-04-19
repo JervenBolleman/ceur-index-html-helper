@@ -29,6 +29,13 @@ import swiss.sib.swissprot.sjh.elements.text.Time;
 
 public class Chrome {
 
+	private static final String ERR_CSS = """
+			.failure {color:red}
+			.failure::before{ content:' ❌'} 
+			.warning {color:orange} 
+			.warning::before{ content:' ⚠️'} 
+			""";
+
 	public static Head head(String fullConferenceTitle, boolean runChecks) {
 		String t = "CEUR-WS.org/Vol-XXX - " + fullConferenceTitle;
 		List<MetaContent> meta = new ArrayList<>();
@@ -38,7 +45,7 @@ public class Chrome {
 		meta.add(link(href("https://ceur-ws.org/ceur-ws-semantic.css"), new Rel("stylesheet")));
 		meta.add(new Comment("CEURLANG=eng "));
 		if (runChecks) {
-			meta.add(new Style(new Text(".failure {color:red} .warning {color:orange}")));
+			meta.add(new Style(new Text(ERR_CSS)));
 		}
 
 		return new Head(new Title(new Text(t)), meta.stream());

@@ -28,6 +28,9 @@ import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.rio.Rio;
 
+import swiss.sib.swissprot.checks.Failure;
+import swiss.sib.swissprot.checks.TextChecks;
+
 public class PdfDataExtractor {
 	private static final Pattern ORCID_PATTERN = Pattern
 			.compile("(\\d{4}\n?-\\n?\\d{4}\\n?-\\n?\\d{4}\\n?-\\n?\\d{3}[\\dX])\\s\\(([^\\)]+)\\)");
@@ -62,7 +65,7 @@ public class PdfDataExtractor {
 		}
 	}
 
-	public static record PdfData(String title, List<Author> authors, boolean hasLibertinus) {
+	public static record PdfData(String title, List<Author> authors, boolean hasLibertinus, List<Failure> failures) {
 
 	}
 
@@ -85,8 +88,9 @@ public class PdfDataExtractor {
 		}
 		List<Author> authors = authorNames.stream().map(Author::new).toList();
 		findEmailsAndOrcids(doc, authors);
+		List<Failure> failures = TextChecks.check(doc);
 		if (title != null) {
-			return new PdfData(title, authors, hasLibertinus);
+			return new PdfData(title, authors, hasLibertinus, failures);
 		}
 		return null;
 	}

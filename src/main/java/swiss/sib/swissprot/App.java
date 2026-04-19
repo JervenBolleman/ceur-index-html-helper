@@ -56,6 +56,7 @@ import picocli.CommandLine;
 import picocli.CommandLine.Option;
 import swiss.sib.swissprot.PdfDataExtractor.Author;
 import swiss.sib.swissprot.PdfDataExtractor.PdfData;
+import swiss.sib.swissprot.checks.Failure;
 import swiss.sib.swissprot.html.Chrome;
 import swiss.sib.swissprot.orcid.OrcidCheckResult;
 import swiss.sib.swissprot.orcid.OrcidChecker;
@@ -421,6 +422,11 @@ public class App {
 				titleSpan.add(span(WARNING, text( "Title is in title case, CEUR does not like this")));
 			}
 		}
+		if (runChecks) {
+			for (Failure fail:sub.data().failures()) {
+				titleSpan.add(failure(fail.failure()));
+			}
+		}
 
 		String paperId = "paper_" + sub.id() + ".pdf";
 		A paperTitle = new A(titleSpan.stream(), href(paperId), rel("schema:url"));
@@ -442,7 +448,7 @@ public class App {
 		return article;
 	}
 
-	private static Pattern SPACE = Pattern.compile(" ");
+	private static final Pattern SPACE = Pattern.compile(" ");
 
 	static boolean isSoft(String title) {
 		String[] split = SPACE.split(title);
