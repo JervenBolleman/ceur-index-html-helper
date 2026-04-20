@@ -56,6 +56,7 @@ import picocli.CommandLine;
 import picocli.CommandLine.Option;
 import swiss.sib.swissprot.PdfDataExtractor.Author;
 import swiss.sib.swissprot.PdfDataExtractor.PdfData;
+import swiss.sib.swissprot.checks.AuthorNameChecks;
 import swiss.sib.swissprot.checks.Failure;
 import swiss.sib.swissprot.html.Chrome;
 import swiss.sib.swissprot.orcid.OrcidCheckResult;
@@ -122,9 +123,6 @@ public class App {
 	private static final Rel OWL_SAME_AS = new Rel("owl:sameAs");
 	private static final Clazz ORCID_CLAZZ = clazz("orcid");
 	
-	//Team authors are not allowed at CEUR warn about that
-	private static final Set<String> COULD_BE_A_TEAM = Set.of("team", "registry", "consortium", "project", "institute");
-
 	@Option(names = "-i", description = "input directory containing a preface.pdf and directories for each section containing all the paper pdfs", required = true)
 	public File inputDir;
 
@@ -424,7 +422,7 @@ public class App {
 		}
 		if (runChecks) {
 			for (Failure fail:sub.data().failures()) {
-				titleSpan.add(failure(fail.failure()));
+				titleSpan.add(fail.render());
 			}
 		}
 
@@ -498,17 +496,9 @@ public class App {
 			List<Element> linkContent = new ArrayList<>();
 			linkContent.add(name);
 			if (runChecks) {
-				OrcidCheckResult checkOne = oc.checkOne(a);
-				if (!checkOne.isOk()) {
-					linkContent.add(text(" "));
-					linkContent.add(span(FAILURE, text(checkOne.name())));
-				}
-				String lc = a.name().toLowerCase(Locale.ROOT);
-				for (String teamTest:COULD_BE_A_TEAM) {
-					if (lc.contains(teamTest)) {
-						linkContent.add(text(" "));
-						linkContent.add(span(WARNING, text("Team authors are not allowed by CEUR")));
-					}
+				AuthorNameChecks anc = new AuthorNameChecks(oc);
+				for (Failure f:anc.check(a)) {
+					linkContent.add(f.render());
 				}
 			}
 			return authorNameWithOrcid(clazz, a.orcid(), linkContent.stream());
