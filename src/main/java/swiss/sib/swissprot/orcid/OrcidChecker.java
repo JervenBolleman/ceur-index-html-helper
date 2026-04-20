@@ -120,16 +120,18 @@ public class OrcidChecker {
 
 	}
 
-	public record OrcidData(String prefferedPubName, List<String> givenNames, List<String> familyNames) {
+	public record OtherName(String content) {}
+	
+	public record OrcidData(String prefferedPubName, String givenNames, String familyNames, List<OtherName> otherNames) {
 		public OrcidData(String prefferedPubName) {
-			this(prefferedPubName, List.of(),List.of());
+			this(prefferedPubName, null, null, List.of());
 		}
 
 		public String orcidName() {
 			if (prefferedPubName != null) {
 				return prefferedPubName;
 			} else {
-				return Stream.concat(givenNames.stream(), familyNames.stream()).collect(Collectors.joining(" "));
+				return givenNames+ " "+ familyNames;
 			}
 		}
 	}
@@ -152,14 +154,25 @@ public class OrcidChecker {
 		if (prefferedNames.size() > 1){
 			throw new IllegalArgumentException("ORCID record has more preferred names than expected."+prefferedNames.stream().collect(Collectors.joining(" ")));
 		}
-		List<String> givenNames = statements.stream().filter(s -> s.getPredicate().equals(FOAF.GIVEN_NAME))
-				.map(Statement::getObject).map(Value::stringValue).toList();
-		List<String> familyNames = statements.stream().filter(s -> s.getPredicate().equals(FOAF.FAMILY_NAME))
-				.map(Statement::getObject).map(Value::stringValue).toList();
+		var givenNames = givenNames(statements);
+		String givenName = givenNames.isEmpty() ? null : givenNames.getFirst();
+		var familyNames = familyNames(statements);
+		String familyName = familyNames.isEmpty() ? null : familyNames.getFirst();
+		List<OtherName> otherNames = List.of();
 		if (! prefferedNames.isEmpty()) {
 			return new OrcidData(prefferedNames.getFirst());
 		} else {
-			return new OrcidData(null, givenNames, familyNames);
+			return new OrcidData(null, givenName, familyName, otherNames);
 		}
+	}
+
+	private static List<String> familyNames(Collection<Statement> statements) {
+		return statements.stream().filter(s -> s.getPredicate().equals(FOAF.FAMILY_NAME))
+				.map(Statement::getObject).map(Value::stringValue).toList();
+	}
+
+	private static List<String> givenNames(Collection<Statement> statements) {
+		return statements.stream().filter(s -> s.getPredicate().equals(FOAF.GIVEN_NAME))
+				.map(Statement::getObject).map(Value::stringValue).toList();
 	}
 }

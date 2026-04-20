@@ -430,11 +430,13 @@ public class App {
 
 		DL authors = authors(sub.data().authors(), paperId);
 		List<FlowContent> childeren = new ArrayList<>();
-		childeren.addAll(List.of(paperTitle, pages, authors));
+		childeren.addAll(List.of(paperTitle, pages, text("\n"), authors));
 		if (runChecks) {
 			if (!sub.data().hasLibertinus()) {
+				childeren.addLast(text("\n"));
 				childeren.addLast(failure("Missing Libertinus fonts"));
 			}
+			childeren.addLast(text("\n"));
 			childeren.addLast(new Comment("Originally " + sub.originalFileName()));
 		}
 		String listValue = Integer.toString(sub.id());

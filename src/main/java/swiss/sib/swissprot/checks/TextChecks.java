@@ -14,7 +14,7 @@ public class TextChecks {
 	private static final String LAST_YEAR = Integer.toString(LocalDate.now().getYear() - 1);
 	private static final String BEFORE_LAST_YEAR = Integer.toString(LocalDate.now().getYear() - 2);
 	private static final Pattern LAST_TWO_YEAR = Pattern
-			.compile("((" + THIS_YEAR + ")|(" + LAST_YEAR + ")|(" + BEFORE_LAST_YEAR + "))");
+			.compile("© ((" + THIS_YEAR + ")|(" + LAST_YEAR + ")|(" + BEFORE_LAST_YEAR + "))");
 	private static final Pattern DECL_AI = Pattern
 			.compile("Declaration .. [G|g]enerative AI|[G|g]enerative AI *[D|d]eclaration");
 	private static final Pattern CUER_BEFORE_PUBLICATION = Pattern.compile("(CEUR-WS.org)|CEUR Workshop Proceedings");

@@ -33,6 +33,6 @@ public class AuthorNameChecks {
 				failures.add(new Issue(Kind.WARNING, "Team authors are not allowed by CEUR"));
 			}
 		}
-		return List.of();
+		return failures;
 	}
 }

@@ -138,6 +138,7 @@ public class PdfDataExtractor {
 	}
 
 	private static final Pattern TILDE = Pattern.compile("~", Pattern.LITERAL);
+	private static final Pattern CURLIES = Pattern.compile("[\\{\\}]");
 	private static void extractAuthorNamesFromMetadata(PDMetadata metadata, List<String> authorNames) {
 		try (var in = metadata.createInputStream()) {
 			
@@ -154,7 +155,8 @@ public class PdfDataExtractor {
 						// This is the person whom made the template not the actual author.
 						
 						if (!authorName.equals(ALEKSANDR_OMETOV_TAU)) {
-							authorNames.add(TILDE.matcher(authorName).replaceAll(" "));
+							String noCurlies = removeNoNameChars(authorName);
+							authorNames.add(noCurlies);
 						}
 					}
 				}
@@ -162,6 +164,12 @@ public class PdfDataExtractor {
 		} catch (IOException | RDF4JException e) {
 			// Ignore, because we are going to try and get the names out in a different way.
 		}
+	}
+
+	private static String removeNoNameChars(String authorName) {
+		String noTilde = TILDE.matcher(authorName).replaceAll(" ");
+		String noCurlies  = CURLIES.matcher(noTilde).replaceAll("");
+		return noCurlies;
 	}
 
 	public static String findTitleByLargestFont(FontAwareStripper stripper) throws IOException {
@@ -232,7 +240,7 @@ public class PdfDataExtractor {
 		matcher.reset();
 		String noAffi = matcher.replaceAll(",");
 		String noDouble = MULTIPLE_COMMA.matcher(noAffi).replaceAll(",");
-		return COMMA.splitAsStream(noDouble).map(String::trim).toList();
+		return COMMA.splitAsStream(noDouble).map(PdfDataExtractor::removeNoNameChars).map(String::trim).toList();
 	}
 
 	private static final Pattern START_DIGITS = Pattern.compile("^\\d+");
