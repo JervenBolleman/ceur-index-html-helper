@@ -56,7 +56,7 @@ public class TextChecks {
 		}
 		if (CUER_BEFORE_PUBLICATION.matcher(text).find()) {
 			failures.add(new Issue(FAILURE,
-					"PDF contains CEUR.org before publication, does like you used an old CEUR template not the current one"));
+					"PDF contains CEUR.org before publication, looks like you used an old CEUR template not the current one"));
 		} else if (BAD_CONFERENCE.matcher(text).find()) {
 			failures.add(new Issue(FAILURE, "CEUR template conference was left at default, please change"));
 		}
