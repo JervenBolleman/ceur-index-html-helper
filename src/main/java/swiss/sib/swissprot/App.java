@@ -420,11 +420,8 @@ public class App {
 				titleSpan.add(span(WARNING, text( "Title is in title case, CEUR does not like this")));
 			}
 		}
-		if (runChecks) {
-			for (Issue fail:sub.data().failures()) {
-				titleSpan.add(fail.render());
-			}
-		}
+		List<Issue> failures = sub.data().failures();
+		renderFailures(titleSpan, failures);
 
 		String paperId = "paper_" + sub.id() + ".pdf";
 		A paperTitle = new A(titleSpan.stream(), href(paperId), rel("schema:url"));
@@ -444,6 +441,18 @@ public class App {
 		Stream<GlobalAttribute> id = Stream.of(id("paper_" + listValue));
 		LI article = new LI(id, typeof, childeren.stream(), new Value(listValue));
 		return article;
+	}
+
+	private void renderFailures(List<Element> titleSpan, List<Issue> failures) {
+		if (runChecks) {
+			if (! failures.isEmpty()) {
+				titleSpan.add(text("\n"));
+			}
+			for (Issue fail:failures) {
+				titleSpan.add(fail.render());
+				titleSpan.add(text("\n"));
+			}
+		}
 	}
 
 	private static final Pattern SPACE = Pattern.compile(" ");

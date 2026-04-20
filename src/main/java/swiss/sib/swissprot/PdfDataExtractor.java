@@ -87,7 +87,7 @@ public class PdfDataExtractor {
 			authorNames = findAuthorsBeforeAbstract(stripper);
 		}
 		List<Author> authors = authorNames.stream().map(Author::new).toList();
-		findEmailsAndOrcids(doc, authors);
+		findEmailsAndOrcids(stripper.pages(), authors);
 		List<Issue> failures = TextChecks.check(stripper.pages());
 		if (title != null) {
 			return new PdfData(title, authors, hasLibertinus, failures, stripper.pages());
@@ -111,21 +111,17 @@ public class PdfDataExtractor {
 		return hasLibertinus;
 	}
 
-	private static void findEmailsAndOrcids(PDDocument doc, List<Author> authorsOrig) throws IOException {
+	static void findEmailsAndOrcids(List<String> pages, List<Author> authorsOrig) {
 		List<Author> authors = new ArrayList<>();
 		authors.addAll(authorsOrig);
-		PDFTextStripper stripper = new PDFTextStripper();
-		stripper.setStartPage(1);
-		stripper.setEndPage(1);
-		String text = stripper.getText(doc);
+		String text = pages.getFirst();
 		var orcMatcher = ORCID_PATTERN.matcher(text);
 		while (orcMatcher.find()) {
 			String orcid = orcMatcher.group(1).replaceAll("\n", "");
 			String person = orcMatcher.group(2).replaceAll("\n", "");
-			Pattern orcidAsRegex = Pattern.compile(person.replace(".", "[a-zA-Z\\.]* ?"));
+			Pattern orcidAsRegex = Pattern.compile(person.replace(".", "[\\p{L}\\p{Mn}\\p{Nd}\\p{Pc}\\.]* ?"));
 			matchOrcids(authors, orcid, orcidAsRegex);
 		}
-
 	}
 
 	private static void matchOrcids(List<Author> authors, String orcid, Pattern orcidAsRegex) {
