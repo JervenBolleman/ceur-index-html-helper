@@ -2,9 +2,9 @@ package swiss.sib.swissprot;
 
 import java.io.IOException;
 import java.io.StringReader;
+import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -65,7 +65,7 @@ public class PdfDataExtractor {
 		}
 	}
 
-	public static record PdfData(String title, List<Author> authors, boolean hasLibertinus, List<Issue> failures) {
+	public static record PdfData(String title, List<Author> authors, boolean hasLibertinus, List<Issue> failures, List<String> pages) {
 
 	}
 
@@ -88,9 +88,9 @@ public class PdfDataExtractor {
 		}
 		List<Author> authors = authorNames.stream().map(Author::new).toList();
 		findEmailsAndOrcids(doc, authors);
-		List<Issue> failures = TextChecks.check(doc);
+		List<Issue> failures = TextChecks.check(stripper.pages());
 		if (title != null) {
-			return new PdfData(title, authors, hasLibertinus, failures);
+			return new PdfData(title, authors, hasLibertinus, failures, stripper.pages());
 		}
 		return null;
 	}
@@ -122,54 +122,22 @@ public class PdfDataExtractor {
 		while (orcMatcher.find()) {
 			String orcid = orcMatcher.group(1).replaceAll("\n", "");
 			String person = orcMatcher.group(2).replaceAll("\n", "");
-			String[] abbrvNameParts = person.split(" ");
-			matchOrcids(authors, orcid, abbrvNameParts);
+			Pattern orcidAsRegex = Pattern.compile(person.replace(".", "[a-zA-Z\\.]* ?"));
+			matchOrcids(authors, orcid, orcidAsRegex);
 		}
 
 	}
 
-	private static void matchOrcids(List<Author> authors, String orcid, String[] abbrvNameParts) {
+	private static void matchOrcids(List<Author> authors, String orcid, Pattern orcidAsRegex) {
 		for (Iterator<Author> iterator = authors.iterator(); iterator.hasNext();) {
 			Author author = iterator.next();
-			String[] nameParts = splitName(author);
+			boolean match = orcidAsRegex.asMatchPredicate().test(author.name());
 			
-			
-			if (match(abbrvNameParts, author, nameParts)) {
+			if (match) {
 				author.orcid = orcid;
 				iterator.remove();
 				return;
 			}
-		}
-	}
-
-	private static String[] splitName(Author author) {
-		List<String> nameParts = new ArrayList<>();
-		nameParts.addAll(Arrays.asList(author.name.split(" ")));
-		for (int i = 1; i < nameParts.size(); i++) {
-			String np = nameParts.get(i);
-			if (np.endsWith(".")) {
-				nameParts.set(i-1, nameParts.get(i-1)+np);
-				nameParts.remove(i);
-			}
-		}
-		return nameParts.toArray(new String[] {});
-	}
-
-	private static boolean match(String[] abbrvNameParts, Author author, String[] nameParts) {
-		if (abbrvNameParts.length == nameParts.length) {
-			boolean match = true;
-			for (int j = 0; j < abbrvNameParts.length && match; j++) {
-				String abbrvNamePart = abbrvNameParts[j];
-				String namePart = nameParts[j];
-				boolean matchesFirstName = abbrvNamePart.endsWith(".") && namePart.charAt(0) == abbrvNamePart.charAt(0);
-				boolean matchesLastName = !abbrvNamePart.endsWith(".") && namePart.equals(abbrvNamePart);
-				if (!matchesFirstName && !matchesLastName) {
-					return false;
-				}
-			}
-			return match;
-		} else {
-			return false;
 		}
 	}
 
@@ -310,12 +278,15 @@ public class PdfDataExtractor {
 
 	public static class FontAwareStripper extends PDFTextStripper {
 		private final List<TextLine> lines = new ArrayList<>();
+		private final List<String> pages = new ArrayList<>();
 
 		public FontAwareStripper() throws IOException {
 			super();
 			setSortByPosition(true); // Crucial for getting lines in visual reading order
-			setStartPage(1);
-			setEndPage(1);
+		}
+
+		public List<String> pages() {
+			return pages;
 		}
 
 		@Override
@@ -338,6 +309,14 @@ public class PdfDataExtractor {
 
 		public List<TextLine> getLines() {
 			return lines;
+		}
+
+		@Override
+		public void processPage(PDPage page) throws IOException {
+			output = new StringWriter();
+			super.processPage(page);
+			output.flush();
+			pages.add(output.toString());
 		}
 	}
 
