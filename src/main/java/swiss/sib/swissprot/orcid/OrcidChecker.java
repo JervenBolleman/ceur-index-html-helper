@@ -64,7 +64,7 @@ public class OrcidChecker {
 
 	public OrcidCheckResult checkOne(Author author) {
 		if (author.orcid() == null)
-			return new OrcidCheckResult(FAIL, "no orcid");
+			return new OrcidCheckResult(OK, "no orcid");
 
 		try (HttpClient hc = HttpClient.newHttpClient()) {
 			OrcidCheckResult co = checkOrcid(author, hc);

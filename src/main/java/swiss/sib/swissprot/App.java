@@ -41,7 +41,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
-import java.util.Set;
 import java.util.TreeMap;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
@@ -79,6 +78,7 @@ import swiss.sib.swissprot.sjh.elements.Element;
 import swiss.sib.swissprot.sjh.elements.HTML;
 import swiss.sib.swissprot.sjh.elements.Text;
 import swiss.sib.swissprot.sjh.elements.contenttype.FlowContent;
+import swiss.sib.swissprot.sjh.elements.contenttype.PhrasingContent;
 import swiss.sib.swissprot.sjh.elements.embedded.Img;
 import swiss.sib.swissprot.sjh.elements.grouping.DD;
 import swiss.sib.swissprot.sjh.elements.grouping.DL;
@@ -518,8 +518,16 @@ public class App {
 	}
 
 	private DD authorWithoutOrcid(Author a, Clazz clazz, int authorIndex, String paperId) {
+		List<PhrasingContent> linkContent = new ArrayList<>();
+		linkContent.add(text(a.name()));
+		if (runChecks) {
+			AuthorNameChecks anc = new AuthorNameChecks(oc);
+			for (Issue f:anc.check(a)) {
+				linkContent.add(f.render());
+			}
+		}
 		return dd(clazz,
-				new Span(empty(), of(new Resource("#" + paperId + "-author-" + authorIndex)), of(new Text(a.name()))));
+				new Span(empty(), of(new Resource("#" + paperId + "-author-" + authorIndex)), linkContent.stream()));
 	}
 
 	private DD authorNameWithOrcid(Clazz clazz, String orcid, Stream<Element> linkContent) {

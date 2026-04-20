@@ -13,19 +13,20 @@ import swiss.sib.swissprot.orcid.OrcidChecker;
 public class AuthorNameChecks {
 	private OrcidChecker oc;
 	// Team authors are not allowed at CEUR warn about that
-	private static final Set<String> COULD_BE_A_TEAM = Set.of("team", "registry", "consortium", "project", "institute");
+	private static final Set<String> COULD_BE_A_TEAM = Set.of("team", "registry", "consortium", "project", "institute",
+			"group");
 
-	
 	public AuthorNameChecks(OrcidChecker oc) {
 		this.oc = oc;
 	}
 
-
 	public List<Issue> check(Author a) {
 		List<Issue> failures = new ArrayList<>();
-		OrcidCheckResult checkOne = oc.checkOne(a);
-		if (!checkOne.isOk()) {
-			failures.add(new Issue(Kind.FAILURE, checkOne.name()));
+		if (oc != null) {
+			OrcidCheckResult checkOne = oc.checkOne(a);
+			if (!checkOne.isOk()) {
+				failures.add(new Issue(Kind.FAILURE, checkOne.name()));
+			}
 		}
 		String lc = a.name().toLowerCase(Locale.ROOT);
 		for (String teamTest : COULD_BE_A_TEAM) {
