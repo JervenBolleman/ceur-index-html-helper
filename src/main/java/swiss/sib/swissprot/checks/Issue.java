@@ -7,7 +7,7 @@ import swiss.sib.swissprot.sjh.elements.text.Span;
 import static swiss.sib.swissprot.sjh.Elements.text;
 import static swiss.sib.swissprot.sjh.Elements.span;
 
-public record Failure(Type t, String message) {
+public record Issue(Type t, String message) {
 	public static enum Type{
 		FAILURE,
 		WARNING

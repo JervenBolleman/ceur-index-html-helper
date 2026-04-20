@@ -28,7 +28,7 @@ import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.rio.Rio;
 
-import swiss.sib.swissprot.checks.Failure;
+import swiss.sib.swissprot.checks.Issue;
 import swiss.sib.swissprot.checks.TextChecks;
 
 public class PdfDataExtractor {
@@ -65,7 +65,7 @@ public class PdfDataExtractor {
 		}
 	}
 
-	public static record PdfData(String title, List<Author> authors, boolean hasLibertinus, List<Failure> failures) {
+	public static record PdfData(String title, List<Author> authors, boolean hasLibertinus, List<Issue> failures) {
 
 	}
 
@@ -88,7 +88,7 @@ public class PdfDataExtractor {
 		}
 		List<Author> authors = authorNames.stream().map(Author::new).toList();
 		findEmailsAndOrcids(doc, authors);
-		List<Failure> failures = TextChecks.check(doc);
+		List<Issue> failures = TextChecks.check(doc);
 		if (title != null) {
 			return new PdfData(title, authors, hasLibertinus, failures);
 		}

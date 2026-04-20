@@ -1,6 +1,6 @@
 package swiss.sib.swissprot.checks;
 
-import static swiss.sib.swissprot.checks.Failure.Type.FAILURE;
+import static swiss.sib.swissprot.checks.Issue.Type.FAILURE;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -23,35 +23,35 @@ public class TextChecks {
 	private static final Pattern CUER_BEFORE_PUBLICATION = Pattern.compile("(CEUR-WS.org)|CEUR Workshop Proceedings");
 	private static final Pattern BAD_CONFERENCE = Pattern.compile("Woodstock.*22");
 
-	public static List<Failure> check(PDDocument data) {
+	public static List<Issue> check(PDDocument data) {
 		PDFTextStripper stripper = new PDFTextStripper();
 		stripper.setStartPage(1);
 		stripper.setEndPage(2);
-		List<Failure> failures = new ArrayList<>();
+		List<Issue> failures = new ArrayList<>();
 		try {
 			String text = stripper.getText(data);
 			if (!CP.matcher(text).find()) {
-				failures.add(new Failure(FAILURE, "Copyright statement not found"));
+				failures.add(new Issue(FAILURE, "Copyright statement not found"));
 			}
 			if (!LAST_TWO_YEAR.matcher(text).find()) {
-				failures.add(new Failure(FAILURE, "Year of writing can't be right"));
+				failures.add(new Issue(FAILURE, "Year of writing can't be right"));
 			}
 			if (CUER_BEFORE_PUBLICATION.matcher(text).find()) {
-				failures.add(new Failure(FAILURE,
+				failures.add(new Issue(FAILURE,
 						"PDF contains CEUR.org before publication, does like you used an old CEUR template not the current one"));
 			} else if (BAD_CONFERENCE.matcher(text).find()) {
-				failures.add(new Failure(FAILURE, "CEUR template conference was left at default, please change"));
+				failures.add(new Issue(FAILURE, "CEUR template conference was left at default, please change"));
 			}
 			if (!DECL_AI.matcher(text).find()) {
 				stripper.setStartPage(3);
 				stripper.setEndPage(data.getNumberOfPages());
 				text = stripper.getText(data);
 				if (!DECL_AI.matcher(text).find()) {
-					failures.add(new Failure(FAILURE, "Missing declaritive AI section"));
+					failures.add(new Issue(FAILURE, "Missing declaritive AI section"));
 				}
 			}
 		} catch (IOException e) {
-			failures.add(new Failure(FAILURE, "Issue reading PDF"));
+			failures.add(new Issue(FAILURE, "Issue reading PDF"));
 		}
 		return failures;
 	}

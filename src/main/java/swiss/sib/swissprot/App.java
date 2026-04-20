@@ -57,7 +57,7 @@ import picocli.CommandLine.Option;
 import swiss.sib.swissprot.PdfDataExtractor.Author;
 import swiss.sib.swissprot.PdfDataExtractor.PdfData;
 import swiss.sib.swissprot.checks.AuthorNameChecks;
-import swiss.sib.swissprot.checks.Failure;
+import swiss.sib.swissprot.checks.Issue;
 import swiss.sib.swissprot.html.Chrome;
 import swiss.sib.swissprot.orcid.OrcidCheckResult;
 import swiss.sib.swissprot.orcid.OrcidChecker;
@@ -421,7 +421,7 @@ public class App {
 			}
 		}
 		if (runChecks) {
-			for (Failure fail:sub.data().failures()) {
+			for (Issue fail:sub.data().failures()) {
 				titleSpan.add(fail.render());
 			}
 		}
@@ -497,7 +497,7 @@ public class App {
 			linkContent.add(name);
 			if (runChecks) {
 				AuthorNameChecks anc = new AuthorNameChecks(oc);
-				for (Failure f:anc.check(a)) {
+				for (Issue f:anc.check(a)) {
 					linkContent.add(f.render());
 				}
 			}
