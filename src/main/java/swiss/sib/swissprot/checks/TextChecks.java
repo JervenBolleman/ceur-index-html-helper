@@ -1,6 +1,6 @@
 package swiss.sib.swissprot.checks;
 
-import static swiss.sib.swissprot.checks.Issue.Type.FAILURE;
+import static swiss.sib.swissprot.checks.Issue.Kind.FAILURE;
 
 import java.io.IOException;
 import java.time.LocalDate;

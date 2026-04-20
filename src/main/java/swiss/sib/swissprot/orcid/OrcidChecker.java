@@ -77,6 +77,9 @@ public class OrcidChecker {
 		if (a.orcid() != null && cache.containsKey(a.orcid())) {
 			return validate(a, cache.get(a.orcid()));
 		}
+		if ("0000-0000-0000-0000".equals(a.orcid())) {
+			return new OrcidCheckResult(FAIL, "All zero orcid is not a valid orcid");
+		}
 		URI uri;
 		try {
 			uri = new URI("https://pub.orcid.org/experimental_rdf_v1/" + a.orcid());
