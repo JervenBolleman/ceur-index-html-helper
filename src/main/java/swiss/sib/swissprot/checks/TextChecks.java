@@ -16,7 +16,7 @@ public class TextChecks {
 	private static final Pattern LAST_TWO_YEAR = Pattern
 			.compile("© ((" + THIS_YEAR + ")|(" + LAST_YEAR + ")|(" + BEFORE_LAST_YEAR + "))");
 	private static final Pattern DECL_AI = Pattern
-			.compile("Declaration .. [G|g]enerative AI|[G|g]enerative AI *[D|d]eclaration");
+			.compile("(Declaration ..+ [G|g]enerative AI)|([G|g]enerative AI *[D|d]eclaration)");
 	private static final Pattern CUER_BEFORE_PUBLICATION = Pattern.compile("(CEUR-WS.org)|CEUR Workshop Proceedings");
 	private static final Pattern BAD_CONFERENCE = Pattern.compile("Woodstock.*22");
 
