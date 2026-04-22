@@ -67,7 +67,7 @@ This must be in the same order as the editors named in the preface.pdf.
 
 ## Checks for subset of CEUR requirements
 
-The option `--run-checks` generates an index.html with inline comments in red for failing checks. These checks are not complete but a first step.
+The option `--run-checks` generates an index.html with inline comments in red for failing checks. These checks are not yet complete but a first step. We also show warnings in orange.
 
 ## Preface
 
