@@ -91,10 +91,8 @@ The tool mines the metadata (names, orcids) etc. from the structure of the PDFs 
 ## Issues
 
 If a paper has more authors than fit on the first page:
-* and it was written with word/libreoffice we might not find all authors
 * not all orcids might be matched to authors
 * word/libreoffice metadata title was set to something else than the actual visible title, we will pick the metadata one
-* the creator of the word/libreoffice template is actually the author of the paper, and is still using word. This will not be detected as most template users have not changed this metadata.
 
 ## Submitted PDFs are the source of truth
 
