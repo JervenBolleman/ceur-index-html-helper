@@ -26,9 +26,10 @@ public class TextChecks {
 		if (!pagei.hasNext()) {
 			failures.add(new Issue(FAILURE, "PDF is empty"));
 		} else {
-			checkFirstPage(failures, pagei.next());
+			String fp = pagei.next();
+			checkFirstPage(failures, fp);
 
-			boolean hasAiDeclaration = findDeclariationOfAIUse(pagei);
+			boolean hasAiDeclaration = findDeclariationOfAIUse(fp, pagei);
 			if (!hasAiDeclaration) {
 				failures.add(new Issue(FAILURE, "Missing declaritive AI section"));
 			}
@@ -37,7 +38,10 @@ public class TextChecks {
 		return failures;
 	}
 
-	private static boolean findDeclariationOfAIUse(Iterator<String> pagei) {
+	private static boolean findDeclariationOfAIUse(String fp, Iterator<String> pagei) {
+		if (DECL_AI.matcher(fp).find()) {
+			return true;
+		}
 		while (pagei.hasNext()) {
 			String np = pagei.next();
 			if (DECL_AI.matcher(np).find()) {
