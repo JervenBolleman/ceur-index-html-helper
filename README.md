@@ -75,25 +75,6 @@ While CEUR is accepting of many ways to write the preface pdf.
 This tool needs the preface to be using the CEUR template.
 The tool mines the metadata (names, orcids) etc. from the structure of the PDFs and this only works for CEUR templated PDFs.
 
-## Coming
-
- * The output is now still a directory. We will add an option that creates the zip file
- * We will add an option to automatically match scanned copyright forms with the papers
- ** This is going to use tesseract4j for the OCR. So this might still need manual interventions 
- ** It means we will get two more options for the directory with signed copyright forms and an output directory
- * bibtex/ris files for citing the papers in this conference 
- * Checking if the pdfs use the CEUR template, have the right fonts embedded and that there is a declaration of AI use.
- * GitHub workflow to create a page where authors can check the PDFs and index.html
- * Corrected metadata in the PDFs that will be submitted 
- * geonames support for location of conference
- * extracting, editor affiliations from preface.pdf instead of second file
-
-## Issues
-
-If a paper has more authors than fit on the first page:
-* not all orcids might be matched to authors
-* word/libreoffice metadata title was set to something else than the actual visible title, we will pick the metadata one
-
 ## Submitted PDFs are the source of truth
 
 If an author forgets half the co-authors in the PDF, then they will not be added to the index.html.
