@@ -38,11 +38,9 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.Map.Entry;
 import java.util.TreeMap;
-import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import org.apache.pdfbox.Loader;
@@ -78,7 +76,6 @@ import swiss.sib.swissprot.sjh.elements.Element;
 import swiss.sib.swissprot.sjh.elements.HTML;
 import swiss.sib.swissprot.sjh.elements.Text;
 import swiss.sib.swissprot.sjh.elements.contenttype.FlowContent;
-import swiss.sib.swissprot.sjh.elements.contenttype.PhrasingContent;
 import swiss.sib.swissprot.sjh.elements.embedded.Img;
 import swiss.sib.swissprot.sjh.elements.grouping.DD;
 import swiss.sib.swissprot.sjh.elements.grouping.DL;
@@ -105,7 +102,7 @@ import swiss.sib.swissprot.sjh.elements.text.Sup;
 public class App {
 	private static final Logger log = LoggerFactory.getLogger(App.class);
 	private static final Clazz FAILURE = clazz("failure");
-	private static final Clazz WARNING = clazz("warning");
+
 	private static final String PREFACE_KEY = "preface";
 	private static final Rel SCHEMA_PAGE_START = new Rel("schema:pageStart");
 	private static final Rel SCHEMA_PAGE_END = new Rel("schema:pageEnd");
@@ -411,15 +408,10 @@ public class App {
 		while (title.endsWith(".")) {
 			title = title.substring(0, title.length() - 2);
 		}
-		List<Element> titleSpan = new ArrayList<>();
-		if (title.isBlank() && runChecks) {
-			titleSpan.add(failure("Can't extract title, does not seem to be using CEUR template"));
-		} else {
-			titleSpan.add(new Span(ga(CUERTITLE), of(SCHEMA_NAME), of(new Text(title))));
-			if (! isSoft(title) && runChecks) {
-				titleSpan.add(span(WARNING, text( "Title is in title case, CEUR does not like this")));
-			}
-		}
+		List<FlowContent> titleSpan = new ArrayList<>();
+		
+		titleSpan.add(new Span(ga(CUERTITLE), of(SCHEMA_NAME), of(new Text(title))));
+		
 		List<Issue> failures = sub.data().failures();
 		renderFailures(titleSpan, failures);
 
@@ -432,10 +424,6 @@ public class App {
 		List<FlowContent> childeren = new ArrayList<>();
 		childeren.addAll(List.of(paperTitle, pages, text("\n"), authors));
 		if (runChecks) {
-			if (!sub.data().hasLibertinus()) {
-				childeren.addLast(text("\n"));
-				childeren.addLast(failure("Missing Libertinus fonts"));
-			}
 			childeren.addLast(text("\n"));
 			childeren.addLast(new Comment("Originally " + sub.originalFileName()));
 		}
@@ -445,7 +433,7 @@ public class App {
 		return article;
 	}
 
-	private void renderFailures(List<Element> titleSpan, List<Issue> failures) {
+	private void renderFailures(List<FlowContent> titleSpan, List<Issue> failures) {
 		if (runChecks) {
 			if (! failures.isEmpty()) {
 				titleSpan.add(text("\n"));
@@ -455,40 +443,6 @@ public class App {
 				titleSpan.add(text("\n"));
 			}
 		}
-	}
-
-	private static final Pattern SPACE = Pattern.compile(" ");
-
-	static boolean isSoft(String title) {
-		String[] split = SPACE.split(title);
-		if (split.length < 2)
-			return false;
-		int words = split.length - 1;
-		int startsWithCap = 0;
-		for (int i = 0; i < split.length; i++) {
-			String word = split[i];
-			if (notAnAbbreviation(word)) {
-				startsWithCap++;
-			}
-		}
-		float per = (float) startsWithCap / (float) words ;
-		return per < 0.5;
-	}
-
-	private static boolean notAnAbbreviation(String word) {
-		if (!word.toUpperCase(Locale.US).equals(word) && Character.isUpperCase(word.charAt(0))) {
-			for (int i=1;i < word.length() -1;i++) {
-				if (Character.isUpperCase(word.charAt(i))){
-					return false;
-				}
-			}
-			return true;
-		}
-		return false;
-	}
-
-	private Span failure(String string) {
-		return span(FAILURE, text(string));
 	}
 
 	private DL authors(List<Author> authors, String paperId) {
@@ -504,13 +458,11 @@ public class App {
 		Clazz clazz = clazz("CEURAUTHOR");
 		if (a.orcid() != null) {
 			Text name = new Text(a.name());
-			List<Element> linkContent = new ArrayList<>();
+			List<FlowContent> linkContent = new ArrayList<>();
 			linkContent.add(name);
 			if (runChecks) {
 				AuthorNameChecks anc = new AuthorNameChecks(oc);
-				for (Issue f:anc.check(a)) {
-					linkContent.add(f.render());
-				}
+				renderFailures(linkContent, anc.check(a));
 			}
 			return authorNameWithOrcid(clazz, a.orcid(), linkContent.stream());
 		}
@@ -518,19 +470,19 @@ public class App {
 	}
 
 	private DD authorWithoutOrcid(Author a, Clazz clazz, int authorIndex, String paperId) {
-		List<PhrasingContent> linkContent = new ArrayList<>();
-		linkContent.add(text(a.name()));
+		List<FlowContent> linkContent = new ArrayList<>();
+		Resource authId = new Resource("#" + paperId + "-author-" + authorIndex);
+		Span auth = new Span(empty(), of(authId), of(text(a.name())));
+		linkContent.add(auth);
 		if (runChecks) {
 			AuthorNameChecks anc = new AuthorNameChecks(oc);
-			for (Issue f:anc.check(a)) {
-				linkContent.add(f.render());
-			}
+			renderFailures(linkContent, anc.check(a));
 		}
 		return dd(clazz,
-				new Span(empty(), of(new Resource("#" + paperId + "-author-" + authorIndex)), linkContent.stream()));
+				linkContent.stream());
 	}
 
-	private DD authorNameWithOrcid(Clazz clazz, String orcid, Stream<Element> linkContent) {
+	private DD authorNameWithOrcid(Clazz clazz, String orcid, Stream<? extends Element> linkContent) {
 		Href href = href("https://orcid.org/" + orcid);
 //				About about = new About("https://orcid.org/" + orcid);
 

@@ -1,6 +1,5 @@
 package swiss.sib.swissprot;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -67,9 +66,5 @@ public class AppTest {
 		return file;
 	}
 	
-	@Test
-	void titleCaseDetector() {
-		assertTrue(App.isSoft("Modular composition of SPARQL queries for focusing on what to look for rather than how to get it"));
-		assertFalse(App.isSoft("KIK-V Indicator Explorer: Consistent, Reusable SPARQL for Health Indicators"));
-	}
+	
 }

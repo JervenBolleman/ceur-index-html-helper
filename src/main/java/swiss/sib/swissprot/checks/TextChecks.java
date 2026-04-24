@@ -3,7 +3,6 @@ package swiss.sib.swissprot.checks;
 import static swiss.sib.swissprot.checks.Issue.Kind.FAILURE;
 
 import java.time.LocalDate;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.regex.Pattern;
@@ -20,8 +19,7 @@ public class TextChecks {
 	private static final Pattern CUER_BEFORE_PUBLICATION = Pattern.compile("(CEUR-WS.org)|CEUR Workshop Proceedings");
 	private static final Pattern BAD_CONFERENCE = Pattern.compile("Woodstock.*22");
 
-	public static List<Issue> check(List<String> pages) {
-		List<Issue> failures = new ArrayList<>();
+	public static void check(List<String> pages, List<Issue> failures) {
 		Iterator<String> pagei = pages.iterator();
 		if (!pagei.hasNext()) {
 			failures.add(new Issue(FAILURE, "PDF is empty"));
@@ -34,8 +32,6 @@ public class TextChecks {
 				failures.add(new Issue(FAILURE, "Missing declaritive AI section"));
 			}
 		}
-
-		return failures;
 	}
 
 	private static boolean findDeclariationOfAIUse(String fp, Iterator<String> pagei) {

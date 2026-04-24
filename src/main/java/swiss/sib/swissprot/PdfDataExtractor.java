@@ -1,5 +1,8 @@
 package swiss.sib.swissprot;
 
+import static java.util.function.Predicate.not;
+import static swiss.sib.swissprot.checks.Issue.Kind.FAILURE;
+import static swiss.sib.swissprot.checks.Issue.Kind.WARNING;
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -7,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,12 +37,21 @@ import swiss.sib.swissprot.checks.Issue;
 import swiss.sib.swissprot.checks.TextChecks;
 
 public class PdfDataExtractor {
+	private static final Pattern SPACE = Pattern.compile(" ");
 	private static final Pattern ORCID_PATTERN = Pattern
-			.compile("(\\d{4}\n?-\\n?\\d{4}\\n?-\\n?\\d{4}\\n?-\\n?\\d{3}[\\dX])\\s\\(([^\\)]+)\\)");
+			.compile("(\\d{4}\n?-\\n?\\d{4}\\n?-\\n?\\d{4}\\n?-\\n?\\d{3}[\\dX])[\\s\\n]{1,2}\\(([^\\)]+)\\)");
+	
+	//Note the two kinds of asterix here
+	private static final Pattern COR_MARKS_ETC = Pattern.compile("[\\*\\∗†‡\\s]+");
+	private static final Pattern MULTIPLE_COMMA = Pattern.compile(",+");
+	private static final Pattern COMMA = Pattern.compile(",");
+	private static final Pattern AND = Pattern.compile("([\\*\\∗†‡0-9\\]])\\s?and ");
 	/**
 	 * Creator of the ODF template, not likely to be the author the actual paper.
 	 */
 	private static final String ALEKSANDR_OMETOV_TAU = "Aleksandr Ometov (TAU)";
+	private static final Set<String> ORCID_OF_TEMPLATE_MAKERS = Set.of("0000-0002-0877-7063", "0000-0001-7116-9338",
+			"0000-0002-9421-8566");
 
 	public static class Author {
 		private String name;
@@ -59,13 +73,13 @@ public class PdfDataExtractor {
 		public String affiliation() {
 			return affiliation;
 		}
-		
+
 		public String toString() {
-			return "A: "+name+ '('+orcid+") at "+affiliation;
+			return "A: " + name + '(' + orcid + ") at " + affiliation;
 		}
 	}
 
-	public static record PdfData(String title, List<Author> authors, boolean hasLibertinus, List<Issue> failures, List<String> pages) {
+	public static record PdfData(String title, List<Author> authors, List<Issue> failures, List<String> pages) {
 
 	}
 
@@ -78,6 +92,7 @@ public class PdfDataExtractor {
 		List<String> authorNames = new ArrayList<>();
 		FontAwareStripper stripper = new FontAwareStripper();
 		stripper.getText(doc);
+		List<Issue> failures = new ArrayList<>();
 		if (title == null) {
 			title = findTitleByLargestFont(stripper);
 		}
@@ -87,10 +102,18 @@ public class PdfDataExtractor {
 			authorNames = findAuthorsBeforeAbstract(stripper);
 		}
 		List<Author> authors = authorNames.stream().map(Author::new).toList();
-		findEmailsAndOrcids(stripper.pages(), authors);
-		List<Issue> failures = TextChecks.check(stripper.pages());
+		findEmailsAndOrcids(stripper.pages(), authors, failures);
+		TextChecks.check(stripper.pages(), failures);
+		if (!hasLibertinus) {
+			failures.add(new Issue(FAILURE, "Libertinus font is not in PDF"));
+		}
+		if (title == null || title.isBlank()) {
+			failures.add(new Issue(FAILURE, "Can't extract title, does not seem to be using CEUR template"));
+		} else if (! isSoft(title)) {
+			failures.add(new Issue(WARNING, "Title is in title case, CEUR does not like this"));
+		}
 		if (title != null) {
-			return new PdfData(title, authors, hasLibertinus, failures, stripper.pages());
+			return new PdfData(title, authors, failures, stripper.pages());
 		}
 		return null;
 	}
@@ -98,20 +121,50 @@ public class PdfDataExtractor {
 	private static boolean detectLibertinusFonts(PDDocument doc) throws IOException {
 		boolean hasLibertinus = false;
 		for (PDPage page : doc.getPages()) {
-            PDResources resources = page.getResources();
-            if (resources != null) {
-                for (COSName fontName : resources.getFontNames()) {
-                    PDFont font = resources.getFont(fontName);
-                    if (font.isEmbedded() && font.getName() != null && font.getName().contains("Libertinus")) {
-                    	hasLibertinus = true;
-                    }
-                }
-            }
-        }
+			PDResources resources = page.getResources();
+			if (resources != null) {
+				for (COSName fontName : resources.getFontNames()) {
+					PDFont font = resources.getFont(fontName);
+					if (font.isEmbedded() && font.getName() != null && font.getName().contains("Libertinus")) {
+						hasLibertinus = true;
+					}
+				}
+			}
+		}
 		return hasLibertinus;
 	}
 
-	static void findEmailsAndOrcids(List<String> pages, List<Author> authorsOrig) {
+	static boolean isSoft(String title) {
+		String[] split = SPACE.split(title);
+		if (split.length < 2)
+			return false;
+		int words = split.length - 1;
+		int startsWithCap = 0;
+		for (int i = 0; i < split.length; i++) {
+			String word = split[i];
+			if (notAnAbbreviation(word)) {
+				startsWithCap++;
+			}
+		}
+		float per = (float) startsWithCap / (float) words;
+		//If more than half the words start with a capital where the words are not Abbreviations 
+		//title is probably in title case.
+		return per < 0.4;
+	}
+
+	private static boolean notAnAbbreviation(String word) {
+		if (!word.toUpperCase(Locale.US).equals(word) && Character.isUpperCase(word.charAt(0))) {
+			for (int i = 1; i < word.length() - 1; i++) {
+				if (Character.isUpperCase(word.charAt(i))) {
+					return false;
+				}
+			}
+			return true;
+		}
+		return false;
+	}
+
+	static void findEmailsAndOrcids(List<String> pages, List<Author> authorsOrig, List<Issue> failures) {
 		List<Author> authors = new ArrayList<>();
 		authors.addAll(authorsOrig);
 		String text = pages.getFirst();
@@ -120,28 +173,34 @@ public class PdfDataExtractor {
 			String orcid = orcMatcher.group(1).replaceAll("\n", "");
 			String person = orcMatcher.group(2).replaceAll("\n", "");
 			Pattern orcidAsRegex = Pattern.compile(person.replace(".", "[\\p{L}\\p{Mn}\\p{Nd}\\p{Pc}\\.]* ?"));
-			matchOrcids(authors, orcid, orcidAsRegex);
+			matchOrcids(authors, orcid, orcidAsRegex, failures);
 		}
 	}
 
-	private static void matchOrcids(List<Author> authors, String orcid, Pattern orcidAsRegex) {
+	private static void matchOrcids(List<Author> authors, String orcid, Pattern orcidAsRegex, List<Issue> failures) {
 		for (Iterator<Author> iterator = authors.iterator(); iterator.hasNext();) {
 			Author author = iterator.next();
 			boolean match = orcidAsRegex.asMatchPredicate().test(author.name());
-			
+
 			if (match) {
 				author.orcid = orcid;
 				iterator.remove();
 				return;
 			}
 		}
+		if (ORCID_OF_TEMPLATE_MAKERS.contains(orcid)) {
+			failures.add(new Issue(FAILURE, "ORCID of template creator found:" + orcid));
+		} else {
+			failures.add(new Issue(WARNING, "ORCID not matched to author:" + orcid));
+		}
 	}
 
 	private static final Pattern TILDE = Pattern.compile("~", Pattern.LITERAL);
 	private static final Pattern CURLIES = Pattern.compile("[\\{\\}]");
+
 	private static void extractAuthorNamesFromMetadata(PDMetadata metadata, List<String> authorNames) {
 		try (var in = metadata.createInputStream()) {
-			
+
 			String xmlAndrdfxml = new String(in.readAllBytes(), StandardCharsets.UTF_8);
 			int start = xmlAndrdfxml.indexOf("<rdf");
 			int end = xmlAndrdfxml.lastIndexOf("RDF>");
@@ -153,7 +212,7 @@ public class PdfDataExtractor {
 							&& seq.getPredicate().getNamespace().equals(RDF.NAMESPACE)) {
 						String authorName = seq.getObject().stringValue();
 						// This is the person whom made the template not the actual author.
-						
+
 						if (!authorName.equals(ALEKSANDR_OMETOV_TAU)) {
 							String noCurlies = removeNoNameChars(authorName);
 							authorNames.add(noCurlies);
@@ -168,8 +227,8 @@ public class PdfDataExtractor {
 
 	private static String removeNoNameChars(String authorName) {
 		String noTilde = TILDE.matcher(authorName).replaceAll(" ");
-		String noCurlies  = CURLIES.matcher(noTilde).replaceAll("");
-		return noCurlies;
+		String noAsterix = noTilde.replace('∗', ' ').replace('*', ' ');
+		return CURLIES.matcher(noAsterix).replaceAll("");
 	}
 
 	public static String findTitleByLargestFont(FontAwareStripper stripper) throws IOException {
@@ -198,10 +257,6 @@ public class PdfDataExtractor {
 		return title.toString();
 	}
 
-	private static final Pattern COR_MARKS_ETC = Pattern.compile("[\\*†‡\\s]+");
-	private static final Pattern MULTIPLE_COMMA = Pattern.compile(",+");
-	private static final Pattern COMMA = Pattern.compile(",");
-
 	public static List<String> findAuthorsBeforeAbstract(FontAwareStripper stripper) throws IOException {
 		List<TextLine> lines = stripper.getLines();
 		if (lines.isEmpty())
@@ -226,26 +281,33 @@ public class PdfDataExtractor {
 		// Remove a dot at the end.
 		if (authors.charAt(authors.length() - 1) == '.')
 			authors.setLength(authors.length() - 2);
-		int lastAnd = authors.lastIndexOf(" and ");
-		if (lastAnd >0) {
-			authors.replace(lastAnd, lastAnd + 5, ", ");
+		Matcher and = AND.matcher(authors);
+		if (and.find()) {
+			String g = and.group(1);
+			authors = new StringBuilder(and.replaceFirst(g + ", "));
 		}
-		Pattern removeAffiliations = Pattern.compile("\\d{1," + maxAffiliationDigits + "} ?,");
+		return cleanAuthors(authors, maxAffiliationDigits);
+	}
+
+	private static List<String> cleanAuthors(StringBuilder authors, int maxAffiliationDigits) {
+		Pattern removeAffiliations = Pattern.compile("\\d+ ?,");
 		String noTokens = COR_MARKS_ETC.matcher(authors).replaceAll(" ");
 		Matcher matcher = removeAffiliations.matcher(noTokens);
-		while(matcher.find()) {
-			String group = matcher.group();
-			
-		}
-		matcher.reset();
+//		while (matcher.find()) {
+//			String group = matcher.group();
+//
+//		}
+//		matcher.reset();
 		String noAffi = matcher.replaceAll(",");
 		String noDouble = MULTIPLE_COMMA.matcher(noAffi).replaceAll(",");
-		return COMMA.splitAsStream(noDouble).map(PdfDataExtractor::removeNoNameChars).map(String::trim).toList();
+		return COMMA.splitAsStream(noDouble).map(PdfDataExtractor::removeNoNameChars).map(String::trim)
+				.filter(not(String::isBlank)).toList();
 	}
 
 	private static final Pattern START_DIGITS = Pattern.compile("^\\d+");
 
-	private static List<String> extractAffiliations(List<TextLine> lines, int lastAuthorLine, float authorLineFontSize) {
+	private static List<String> extractAffiliations(List<TextLine> lines, int lastAuthorLine,
+			float authorLineFontSize) {
 		List<String> affiliations = new ArrayList<>();
 		for (int i = lastAuthorLine; i < lines.size(); i++) {
 			TextLine line = lines.get(i);
@@ -254,7 +316,7 @@ public class PdfDataExtractor {
 				return affiliations;
 			} else {
 				Matcher matcher = START_DIGITS.matcher(line.text);
-				if (! matcher.find()) {
+				if (!matcher.find()) {
 					affiliations.add(line.text);
 				}
 			}

@@ -3,6 +3,7 @@ package swiss.sib.swissprot.checks;
 import static org.junit.jupiter.api.Assertions.*;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
@@ -60,11 +61,12 @@ class TextChecksTest {
 
 	@Test
 	void test() {
-		List<Issue> check = TextChecks
-				.check(List.of(page1.replace("{{YEAR}}", Integer.toString(LocalDateTime.now().getYear()))));
+		List<Issue> check = new ArrayList<>();
+		TextChecks.check(List.of(page1.replace("{{YEAR}}", Integer.toString(LocalDateTime.now().getYear()))), check);
 		assertEquals(1, check.size());
 		assertTrue(check.getFirst().message().contains("AI"));
-		check = TextChecks.check(List.of(page1.replace("{{YEAR}}", "2020")));
+		check.clear();
+		TextChecks.check(List.of(page1.replace("{{YEAR}}", "2020")), check);
 		assertEquals(2, check.size());
 		assertTrue(check.getFirst().message().contains("Year"));
 	}
@@ -120,10 +122,11 @@ class TextChecksTest {
 			0000-0002-6607-8519 (Y. Sato)
 			© 2025 Copyright for this paper by its authors. Use permitted under Creative Commons License Attribution 4.0 International (CC BY 4.0).
 						""";
-	
+
 	@Test
 	void testFailingAIDeclaration() {
-		List<Issue> check = TextChecks.check(List.of(failingAiDel));
+		ArrayList<Issue> check = new ArrayList<Issue>();
+		TextChecks.check(List.of(failingAiDel), check);
 		assertTrue(check.isEmpty());
 	}
 }

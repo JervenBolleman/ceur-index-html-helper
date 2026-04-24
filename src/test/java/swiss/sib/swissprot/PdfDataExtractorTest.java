@@ -1,6 +1,7 @@
 package swiss.sib.swissprot;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -9,17 +10,20 @@ import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Pattern;
 
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
 import swiss.sib.swissprot.PdfDataExtractor.Author;
 import swiss.sib.swissprot.PdfDataExtractor.PdfData;
+import swiss.sib.swissprot.checks.Issue;
 
 class PdfDataExtractorTest {
 
@@ -28,7 +32,9 @@ class PdfDataExtractorTest {
 	static final String LATEX_ORCIDS_PDF = "latex-oricds.pdf";
 	static final String MISSING = "missing_one_orcid.pdf";
 	static final String NBSP = "non_breaking_space_in_name.pdf";
-
+	static final String ONE_ORCID_TO_MUCH = "extract_two_names_from_libreoffice_writer.pdf";
+	static final String STRANGE_ORCID_EXTRACT_FAILURE="paper_12.pdf";
+	
 	@TempDir
 	Path temp;
 
@@ -48,6 +54,25 @@ class PdfDataExtractorTest {
 			Author last = pdfData.authors().getLast();
 			assertEquals("Ben Gardner", last.name());
 			assertNull(last.orcid());
+		}
+	}
+	
+	@Test
+	void libreoffice2() throws IOException {
+		Path file = copy(ONE_ORCID_TO_MUCH);
+
+		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file.toFile()))) {
+			PdfData pdfData = PdfDataExtractor.extract(document);
+			assertNotNull(pdfData);
+			assertEquals(2, pdfData.authors().size());
+			Author first = pdfData.authors().get(0);
+			assertEquals("Walter Baccinelli", first.name());
+			Author second = pdfData.authors().get(1);
+			assertEquals("Vedran Kasalica", second.name());
+			assertEquals("0000-0002-0097-1056", second.orcid());
+			List<Issue> failures = pdfData.failures();
+			assertFalse(failures.isEmpty());
+			assertTrue(failures.getFirst().message().contains("template"));
 		}
 	}
 
@@ -111,6 +136,19 @@ class PdfDataExtractorTest {
 			assertEquals("0000-0001-6960-357X", first.orcid());
 		}
 	}
+	
+	@Disabled(value = "Not running because there are real errors in this PDF")
+	@Test
+	void kalt() throws IOException {
+		Path file = copy(STRANGE_ORCID_EXTRACT_FAILURE);
+
+		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file.toFile()))) {
+			PdfData pdfData = PdfDataExtractor.extract(document);
+			assertNotNull(pdfData);
+			assertEquals(1, pdfData.failures().size());
+			
+		}
+	}
 
 	@Test
 	void nbsp() throws IOException {
@@ -167,7 +205,26 @@ class PdfDataExtractorTest {
 		Author flemoine = new Author("Frédéric Lemoine");
 		assertTrue(p.asMatchPredicate().test(flemoine.name()));
 		List<Author> authors = List.of(flemoine);
-		PdfDataExtractor.findEmailsAndOrcids(List.of(page1), authors);
+		ArrayList<Issue> issues = new ArrayList<>();
+		PdfDataExtractor.findEmailsAndOrcids(List.of(page1), authors, issues);
 		assertNotNull(authors.getFirst().orcid());
+	}
+	
+//	@Test
+//	void namesFromLibreOfficeWriter() {
+//		Author walter = new Author("Walter Baccinelli");
+//		Author vedran = new Author("Vedran Kasalica");
+//		List<Author> authors = List.of(walter, vedran);
+//		ArrayList<Issue> issues = new ArrayList<>();
+//		PdfDataExtractor.findEmailsAndOrcids(List.of("Walter Baccinelli1,∗,†and Vedran Kasalica1,∗,†"), authors, issues);
+//		assertEquals(2, authors.size());
+//		assertNotNull(authors.getFirst().name());
+//	}
+	
+	@Test
+	void titleCaseDetector() {
+		assertTrue(PdfDataExtractor.isSoft("Modular composition of SPARQL queries for focusing on what to look for rather than how to get it"));
+		assertFalse(PdfDataExtractor.isSoft("KIK-V Indicator Explorer: Consistent, Reusable SPARQL for Health Indicators"));
+		assertTrue(PdfDataExtractor.isSoft("Revisiting SIF abstraction rules with SPARQL for querying BioPAX"));
 	}
 }
