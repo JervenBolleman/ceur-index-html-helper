@@ -50,6 +50,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import picocli.CommandLine;
+import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import swiss.sib.swissprot.PdfDataExtractor.Author;
 import swiss.sib.swissprot.PdfDataExtractor.PdfData;
@@ -99,8 +100,9 @@ import swiss.sib.swissprot.sjh.elements.text.Sup;
 /**
  *
  */
-public class App {
-	private static final Logger log = LoggerFactory.getLogger(App.class);
+@Command(name = "make-index")
+public class MakeIndex {
+	private static final Logger log = LoggerFactory.getLogger(MakeIndex.class);
 	private static final Clazz FAILURE = clazz("failure");
 
 	private static final String PREFACE_KEY = "preface";
@@ -167,7 +169,7 @@ public class App {
 	private OrcidChecker oc;
 
 	public static void main(String[] args) throws IOException {
-		App app = new App();
+		MakeIndex app = new MakeIndex();
 		CommandLine cl = new CommandLine(app);
 		cl.parseArgs(args);
 		if (cl.isUsageHelpRequested()) {

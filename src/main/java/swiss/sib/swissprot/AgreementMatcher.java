@@ -9,12 +9,14 @@ import java.nio.file.StandardOpenOption;
 import java.util.List;
 import java.util.stream.Stream;
 
+import javax.imageio.ImageIO;
+import javax.imageio.stream.ImageOutputStream;
+
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
-import org.apache.pdfbox.tools.imageio.ImageIOUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -32,21 +34,12 @@ public class AgreementMatcher {
 		try {
 			Path tmp = Files.createTempDirectory("ceur-tesseract-temp");
 			try {
-				for (File file : dirWithAgreements.listFiles()) {
-					if (file.getName().endsWith(".pdf") || file.getName().endsWith(".png")
-							|| file.getName().endsWith(".jpg") || file.getName().endsWith(".jpeg")) {
-						try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file))) {
-							String string = totext(tmp, file, document);
-							int beforeTitleIdx = string.indexOf(AGREE_THAT_MY_OUR_CONTRIBUTION)
-									+ AGREE_THAT_MY_OUR_CONTRIBUTION.length();
-							int afterTitle = string.indexOf("authored by:");
-							if (beforeTitleIdx > 0 && afterTitle > 0 && afterTitle < string.length()) {
-								String pt = string.substring(beforeTitleIdx, afterTitle).replaceAll("\n", "").trim();
-								System.err.println(pt);
-							}
-						} catch (IOException e) {
-							//Can't check this PDF.
-						}
+				for (File agreement : dirWithAgreements.listFiles()) {
+					if (agreement.getName().endsWith(".png") || agreement.getName().endsWith(".jpg")
+							|| agreement.getName().endsWith(".jpeg")) {
+						checkImage(agreement);
+					} else if (agreement.getName().endsWith(".pdf")) {
+						checkPdf(tmp, agreement);
 					}
 				}
 			} finally {
@@ -67,11 +60,37 @@ public class AgreementMatcher {
 		return Stream.empty();
 	}
 
+	private static String checkImage(File imageFile) throws IOException, InterruptedException {
+		File txt = new File(imageFile.getParentFile(), imageFile.getName() + ".txt");
+		ProcessBuilder pb = new ProcessBuilder("tesseract", imageFile.getAbsolutePath(),
+				imageFile.getAbsolutePath(), "-l", "eng");
+		Process start = pb.start();
+		start.waitFor();
+		String string = Files.readString(txt.toPath());
+		return string;
+		
+	}
+
+	private static void checkPdf(Path tmp, File file) throws InterruptedException {
+		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file))) {
+			String string = totext(tmp, file, document);
+			int beforeTitleIdx = string.indexOf(AGREE_THAT_MY_OUR_CONTRIBUTION)
+					+ AGREE_THAT_MY_OUR_CONTRIBUTION.length();
+			int afterTitle = string.indexOf("authored by:");
+			if (beforeTitleIdx > 0 && afterTitle > 0 && afterTitle < string.length()) {
+				String pt = string.substring(beforeTitleIdx, afterTitle).replaceAll("\n", "").trim();
+				System.err.println(pt);
+			}
+		} catch (IOException e) {
+			// Can't check this PDF.
+		}
+	}
+
 	private static String totext(Path tmp, File file, PDDocument document) throws IOException, InterruptedException {
-		Path tf = convert(tmp, file, document);
-		File txt = new File(tf.getParent().toFile(), tf.toFile().getName() + ".txt");
-		ProcessBuilder pb = new ProcessBuilder("tesseract", tf.toFile().getAbsolutePath(),
-				tf.toFile().getAbsolutePath(), "-l", "eng");
+		Path imageFile = convert(tmp, file, document);
+		File txt = new File(imageFile.getParent().toFile(), imageFile.toFile().getName() + ".txt");
+		ProcessBuilder pb = new ProcessBuilder("tesseract", imageFile.toFile().getAbsolutePath(),
+				imageFile.toFile().getAbsolutePath(), "-l", "eng");
 		Process start = pb.start();
 		start.waitFor();
 		String string = Files.readString(txt.toPath());
@@ -82,8 +101,9 @@ public class AgreementMatcher {
 		PDFRenderer pdfRenderer = new PDFRenderer(document);
 		BufferedImage bim = pdfRenderer.renderImageWithDPI(0, 300, ImageType.RGB);
 		Path tf = Files.createTempFile(tmp, file.getName(), "png");
-		try (var os = Files.newOutputStream(tf, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)) {
-			boolean img = ImageIOUtil.writeImage(bim, "png", os, 300);
+		try (var os = Files.newOutputStream(tf, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
+				ImageOutputStream ios = ImageIO.createImageOutputStream(os);) {
+			ImageIO.write(bim, "png", ios);
 		}
 		return tf;
 	}

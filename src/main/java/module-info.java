@@ -3,7 +3,6 @@ module oa2cuer {
 	requires jtidy;
 	requires org.apache.pdfbox;
 	requires org.apache.pdfbox.io;
-	requires com.opencsv;
 	requires rdf4j.model.api;
 	requires rdf4j.rio.rdfxml;
 	requires rdf4j.model;
@@ -14,8 +13,9 @@ module oa2cuer {
 	requires info.picocli;
 	requires java.net.http;
 	requires org.slf4j;
-	requires tess4j;
 	requires java.desktop;
-	requires org.apache.pdfbox.tools;
+//	requires com.opencsv;
+//	requires tess4j;
+//	requires org.apache.pdfbox.tools;
 }
 

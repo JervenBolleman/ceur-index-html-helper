@@ -14,7 +14,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-public class AppTest {
+public class MakeIndexTest {
 	@TempDir
 	Path in;
 
@@ -24,7 +24,7 @@ public class AppTest {
 	@Test
 	void createMini() throws IOException {
 
-		App app = new App();
+		MakeIndex app = new MakeIndex();
 
 		Path shortDir = in.resolve("short");
 		copy(PdfDataExtractorTest.LIBREOFFICE_PDF, shortDir);

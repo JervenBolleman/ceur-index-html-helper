@@ -25,10 +25,10 @@ At the moment this is command line logic.
 cd ceur-index-html-helper/target
 
 # This will give all the options that are required. 
-java -jar ceur-index-html-helper-1.0-SNAPSHOT-uber.jar -h
+java -jar target/ceur-index-html-helper-1.0-SNAPSHOT-uber.jar make-index -h
 
 # An example
-java -jar ceur-index-html-helper-1.0-SNAPSHOT-uber.jar \
+java -jar target/ceur-index-html-helper-1.0-SNAPSHOT-uber.jar make-index \
 	-i ~/swat4hcls-proceedings-2025/ \
 	-o ~/swat4hcls-proceedings-2025-for-ceur/ \
 	-y 2026 \
