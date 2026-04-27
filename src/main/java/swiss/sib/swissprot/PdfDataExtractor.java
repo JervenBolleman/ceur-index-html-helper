@@ -42,10 +42,11 @@ public class PdfDataExtractor {
 			.compile("(\\d{4}\n?-\\n?\\d{4}\\n?-\\n?\\d{4}\\n?-\\n?\\d{3}[\\dX])[\\s\\n]{1,2}\\(([^\\)]+)\\)");
 	
 	//Note the two kinds of asterix here
-	private static final Pattern COR_MARKS_ETC = Pattern.compile("[\\*\\∗†‡\\s]+");
+	private static final Pattern COR_MARKS_ETC = Pattern.compile("[\\*\\∗†‡\\sⰠ﻿]+");
 	private static final Pattern MULTIPLE_COMMA = Pattern.compile(",+");
 	private static final Pattern COMMA = Pattern.compile(",");
-	private static final Pattern AND = Pattern.compile("([\\*\\∗†‡0-9\\]])\\s?and ");
+	private static final Pattern AND = Pattern.compile("([\\*\\∗†‡0-9\\]Ⱐ﻿])\\s?and ");
+	private static final Pattern LATIN_RANGE = Pattern.compile("[^\\p{IsLatin}\\d\\s\\p{Punct}'’]");
 	/**
 	 * Creator of the ODF template, not likely to be the author the actual paper.
 	 */
@@ -197,7 +198,7 @@ public class PdfDataExtractor {
 
 	private static final Pattern TILDE = Pattern.compile("~", Pattern.LITERAL);
 	private static final Pattern CURLIES = Pattern.compile("[\\{\\}]");
-
+	private static final Pattern STRANGE = Pattern.compile("Ⱐ");
 	private static void extractAuthorNamesFromMetadata(PDMetadata metadata, List<String> authorNames) {
 		try (var in = metadata.createInputStream()) {
 
@@ -213,7 +214,10 @@ public class PdfDataExtractor {
 						String authorName = seq.getObject().stringValue();
 						// This is the person whom made the template not the actual author.
 
-						if (!authorName.equals(ALEKSANDR_OMETOV_TAU)) {
+						Matcher sm = STRANGE.matcher(authorName);
+						if (sm.find()) {
+							STRANGE.splitAsStream(authorName).map(String::trim).forEach(authorNames::add);
+						} else if (!authorName.equals(ALEKSANDR_OMETOV_TAU)) {
 							String noCurlies = removeNoNameChars(authorName);
 							authorNames.add(noCurlies);
 						}
@@ -228,7 +232,8 @@ public class PdfDataExtractor {
 	private static String removeNoNameChars(String authorName) {
 		String noTilde = TILDE.matcher(authorName).replaceAll(" ");
 		String noAsterix = noTilde.replace('∗', ' ').replace('*', ' ');
-		return CURLIES.matcher(noAsterix).replaceAll("");
+		String noLatin = LATIN_RANGE.matcher(noAsterix).replaceAll(" ");
+		return CURLIES.matcher(noLatin).replaceAll("");
 	}
 
 	public static String findTitleByLargestFont(FontAwareStripper stripper) throws IOException {

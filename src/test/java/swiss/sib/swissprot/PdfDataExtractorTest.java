@@ -149,6 +149,18 @@ class PdfDataExtractorTest {
 			
 		}
 	}
+	
+	@Test
+	void strangeCharacters() throws IOException {
+		Path file = copy("paper_33.pdf");
+
+		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file.toFile()))) {
+			PdfData pdfData = PdfDataExtractor.extract(document);
+			assertNotNull(pdfData);
+			assertEquals(1, pdfData.failures().size());
+			
+		}
+	}
 
 	@Test
 	void nbsp() throws IOException {

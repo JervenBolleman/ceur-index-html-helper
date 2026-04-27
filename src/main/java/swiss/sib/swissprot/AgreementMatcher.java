@@ -35,7 +35,7 @@ public class AgreementMatcher implements Callable<Integer> {
 	private static final String AGREE_THAT_MY_OUR_CONTRIBUTION = "agree that my/our contribution:";
 	private static final Logger log = LoggerFactory.getLogger(AgreementMatcher.class);
 
-	public record AgreementForSubmission(Agreement agg, Submission sub, Optional<Issue> isText) {
+	public record AgreementForSubmission(Agreement agg, Submission sub, Optional<Issue> isText, String matching) {
 
 		public Optional<String> submissionId() {
 			if (sub == null)
@@ -66,10 +66,11 @@ public class AgreementMatcher implements Callable<Integer> {
 		ProceedingsData collect = ProceedingsData.collect(inputDir);
 		List<Submission> submissions = collect.sections().entrySet().stream().map(Entry::getValue).flatMap(List::stream)
 				.toList();
-		match(agreementsDir, submissions).forEach(as ->{
-			String m = as.submissionId().orElseGet(()->"None");
-			System.out.println(as.agg.title + " in "+ as.agg().file().getName() + " matches "+ m);
-		});;
+		match(agreementsDir, submissions).forEach(as -> {
+			String m = as.submissionId().orElseGet(() -> "None");
+			System.out.println(as.agg.title + " in " + as.agg().file().getName() + " matches " + m);
+		});
+		;
 		return 0;
 	}
 
@@ -79,20 +80,7 @@ public class AgreementMatcher implements Callable<Integer> {
 			Path tmp = Files.createTempDirectory("ceur-tesseract-temp");
 			try {
 				for (File agreement : dirWithAgreements.listFiles()) {
-					Optional<String> title = Optional.empty();
-					if (agreement.getName().endsWith(".png") || agreement.getName().endsWith(".jpg")
-							|| agreement.getName().endsWith(".jpeg")) {
-						title = checkImage(agreement);
-					} else if (agreement.getName().endsWith(".pdf")) {
-						title = checkPdf(tmp, agreement);
-					}
-					if (title.isPresent()) {
-						String t = title.get();
-						boolean found = findByExactTitleMatch(subs, l, agreement, t);
-						if (!found) {
-							guessByLevensteinDistance(subs, l, agreement, t);
-						}
-					}
+					extractTitleAndTryToMatch(subs, l, tmp, agreement);
 				}
 			} finally {
 				Files.walk(tmp).forEach(f -> {
@@ -109,7 +97,41 @@ public class AgreementMatcher implements Callable<Integer> {
 			Thread.interrupted();
 		}
 
-		return Stream.empty();
+		return l.stream();
+	}
+
+	private static void extractTitleAndTryToMatch(List<Submission> subs, List<AgreementForSubmission> l, Path tmp,
+			File agreement) throws IOException, InterruptedException {
+		Optional<String> title = Optional.empty();
+		if (agreement.getName().endsWith(".png") || agreement.getName().endsWith(".jpg")
+				|| agreement.getName().endsWith(".jpeg")) {
+			title = checkImage(agreement);
+		} else if (agreement.getName().endsWith(".pdf")) {
+			title = checkPdf(tmp, agreement);
+		}
+		if (title.isPresent()) {
+			String t = title.get();
+			boolean found = findByExactTitleMatch(subs, l, agreement, t);
+			if (!found) {
+				found = findByExactFileNameMatch(subs, l, agreement, t);
+			}
+			if (!found) {
+				guessByLevensteinDistance(subs, l, agreement, t);
+			}
+		}
+	}
+
+	private static boolean findByExactFileNameMatch(List<Submission> subs, List<AgreementForSubmission> l,
+			File agreement, String t) {
+		String name = agreement.getName();
+		for (Submission sub : subs) {
+			if (sub.originalFileName().equals(name)) {
+				l.add(new AgreementForSubmission(new Agreement(agreement, t), sub, Optional.empty(), "FileName match"));
+				return true;
+			}
+		}
+		return false;
+
 	}
 
 	private static void guessByLevensteinDistance(List<Submission> subs, List<AgreementForSubmission> l, File agreement,
@@ -127,7 +149,8 @@ public class AgreementMatcher implements Callable<Integer> {
 		}
 		if (mostLikely != null) {
 
-			l.add(new AgreementForSubmission(new Agreement(agreement, t), mostLikely, Optional.empty()));
+			l.add(new AgreementForSubmission(new Agreement(agreement, t), mostLikely, Optional.empty(),
+					"Text distance"));
 		}
 	}
 
@@ -136,7 +159,7 @@ public class AgreementMatcher implements Callable<Integer> {
 		boolean found = false;
 		for (Submission sub : subs) {
 			if (sub.title().equals(t)) {
-				l.add(new AgreementForSubmission(new Agreement(agreement, t), sub, Optional.empty()));
+				l.add(new AgreementForSubmission(new Agreement(agreement, t), sub, Optional.empty(), "Exact title match"));
 				found = true;
 			}
 		}
@@ -170,7 +193,7 @@ public class AgreementMatcher implements Callable<Integer> {
 		int afterTitle = string.indexOf("authored by:");
 		if (beforeTitleIdx > 0 && afterTitle > 0 && afterTitle < string.length()) {
 			String pt = string.substring(beforeTitleIdx, afterTitle).replaceAll("\n", "").trim();
-			System.out.println(pt);
+			log.info(pt);
 			return Optional.of(pt);
 		}
 		return Optional.empty();
