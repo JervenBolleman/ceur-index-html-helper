@@ -33,8 +33,8 @@ class PdfDataExtractorTest {
 	static final String MISSING = "missing_one_orcid.pdf";
 	static final String NBSP = "non_breaking_space_in_name.pdf";
 	static final String ONE_ORCID_TO_MUCH = "extract_two_names_from_libreoffice_writer.pdf";
-	static final String STRANGE_ORCID_EXTRACT_FAILURE="paper_12.pdf";
-	
+	static final String STRANGE_ORCID_EXTRACT_FAILURE = "paper_12.pdf";
+
 	@TempDir
 	Path temp;
 
@@ -56,7 +56,7 @@ class PdfDataExtractorTest {
 			assertNull(last.orcid());
 		}
 	}
-	
+
 	@Test
 	void libreoffice2() throws IOException {
 		Path file = copy(ONE_ORCID_TO_MUCH);
@@ -136,7 +136,7 @@ class PdfDataExtractorTest {
 			assertEquals("0000-0001-6960-357X", first.orcid());
 		}
 	}
-	
+
 	@Disabled(value = "Not running because there are real errors in this PDF")
 	@Test
 	void kalt() throws IOException {
@@ -146,19 +146,20 @@ class PdfDataExtractorTest {
 			PdfData pdfData = PdfDataExtractor.extract(document);
 			assertNotNull(pdfData);
 			assertEquals(1, pdfData.failures().size());
-			
+
 		}
 	}
-	
+
 	@Test
 	void strangeCharacters() throws IOException {
 		Path file = copy("paper_33.pdf");
-
+		Pattern nm = Pattern.compile("M[\\p{L}\\p{Mn}\\p{Nd}\\p{Pc}\\.]*\s? Cukic");
+		String input = "Milena Cukic";
+		assertTrue(nm.matcher(input).matches());
 		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file.toFile()))) {
 			PdfData pdfData = PdfDataExtractor.extract(document);
 			assertNotNull(pdfData);
-			assertEquals(1, pdfData.failures().size());
-			
+			assertTrue(pdfData.failures().isEmpty());
 		}
 	}
 
@@ -221,7 +222,7 @@ class PdfDataExtractorTest {
 		PdfDataExtractor.findEmailsAndOrcids(List.of(page1), authors, issues);
 		assertNotNull(authors.getFirst().orcid());
 	}
-	
+
 //	@Test
 //	void namesFromLibreOfficeWriter() {
 //		Author walter = new Author("Walter Baccinelli");
@@ -232,11 +233,13 @@ class PdfDataExtractorTest {
 //		assertEquals(2, authors.size());
 //		assertNotNull(authors.getFirst().name());
 //	}
-	
+
 	@Test
 	void titleCaseDetector() {
-		assertTrue(PdfDataExtractor.isSoft("Modular composition of SPARQL queries for focusing on what to look for rather than how to get it"));
-		assertFalse(PdfDataExtractor.isSoft("KIK-V Indicator Explorer: Consistent, Reusable SPARQL for Health Indicators"));
+		assertTrue(PdfDataExtractor.isSoft(
+				"Modular composition of SPARQL queries for focusing on what to look for rather than how to get it"));
+		assertFalse(
+				PdfDataExtractor.isSoft("KIK-V Indicator Explorer: Consistent, Reusable SPARQL for Health Indicators"));
 		assertTrue(PdfDataExtractor.isSoft("Revisiting SIF abstraction rules with SPARQL for querying BioPAX"));
 	}
 }

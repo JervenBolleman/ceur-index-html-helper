@@ -12,6 +12,7 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.function.Predicate;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -32,14 +33,17 @@ import org.eclipse.rdf4j.model.vocabulary.DC;
 import org.eclipse.rdf4j.model.vocabulary.RDF;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.rio.Rio;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import swiss.sib.swissprot.checks.Issue;
 import swiss.sib.swissprot.checks.TextChecks;
 
 public class PdfDataExtractor {
+	private static final Logger log = LoggerFactory.getLogger(PdfDataExtractor.class);
 	private static final Pattern SPACE = Pattern.compile(" ");
 	private static final Pattern ORCID_PATTERN = Pattern
-			.compile("(\\d{4}\n?-\\n?\\d{4}\\n?-\\n?\\d{4}\\n?-\\n?\\d{3}[\\dX])[\\s\\n]{1,2}\\(([^\\)]+)\\)");
+			.compile("(\\d{4}\n?-\\n?\\d{4}\\n?-\\n?\\d{4}\\n?-\\n?\\d{3}[\\dX])[\\s\\n]{1,2}\\(\\p{Z}*([^\\)]+)\\)");
 	
 	//Note the two kinds of asterix here
 	private static final Pattern COR_MARKS_ETC = Pattern.compile("[\\*\\∗†‡\\sⰠ﻿]+");
@@ -171,22 +175,30 @@ public class PdfDataExtractor {
 		String text = pages.getFirst();
 		var orcMatcher = ORCID_PATTERN.matcher(text);
 		while (orcMatcher.find()) {
-			String orcid = orcMatcher.group(1).replaceAll("\n", "");
-			String person = orcMatcher.group(2).replaceAll("\n", "");
-			Pattern orcidAsRegex = Pattern.compile(person.replace(".", "[\\p{L}\\p{Mn}\\p{Nd}\\p{Pc}\\.]* ?"));
+			String orcid = orcMatcher.group(1).replace("\n", "");
+			String person = orcMatcher.group(2).replace("\n", "").trim();
+			Pattern orcidAsRegex = Pattern.compile(person.replace(".", "[\\p{L}\\p{Mn}\\p{Nd}\\p{Pc}\\.]*\\s*"));
 			matchOrcids(authors, orcid, orcidAsRegex, failures);
 		}
 	}
 
 	private static void matchOrcids(List<Author> authors, String orcid, Pattern orcidAsRegex, List<Issue> failures) {
+		Predicate<String> amp = orcidAsRegex.asMatchPredicate();
+		Predicate<String> amf = orcidAsRegex.asPredicate();
 		for (Iterator<Author> iterator = authors.iterator(); iterator.hasNext();) {
 			Author author = iterator.next();
-			boolean match = orcidAsRegex.asMatchPredicate().test(author.name());
-
+			boolean match = amp.test(author.name());
+			
 			if (match) {
 				author.orcid = orcid;
 				iterator.remove();
 				return;
+			} else if(amf.test(author.name())){
+				log.debug("{}:{}", orcidAsRegex, author.name());
+				author.name().chars().forEach(i -> {
+					int type = Character.getType(i);
+					log.error(type + " " + Character.getName(i));
+				});
 			}
 		}
 		if (ORCID_OF_TEMPLATE_MAKERS.contains(orcid)) {
@@ -198,7 +210,8 @@ public class PdfDataExtractor {
 
 	private static final Pattern TILDE = Pattern.compile("~", Pattern.LITERAL);
 	private static final Pattern CURLIES = Pattern.compile("[\\{\\}]");
-	private static final Pattern STRANGE = Pattern.compile("Ⱐ");
+	private static final Pattern STRANGE = Pattern.compile("[Ⱐ]");
+	
 	private static void extractAuthorNamesFromMetadata(PDMetadata metadata, List<String> authorNames) {
 		try (var in = metadata.createInputStream()) {
 
@@ -216,7 +229,7 @@ public class PdfDataExtractor {
 
 						Matcher sm = STRANGE.matcher(authorName);
 						if (sm.find()) {
-							STRANGE.splitAsStream(authorName).map(String::trim).forEach(authorNames::add);
+							STRANGE.splitAsStream(authorName).map(PdfDataExtractor::removeNoNameChars).forEach(authorNames::add);
 						} else if (!authorName.equals(ALEKSANDR_OMETOV_TAU)) {
 							String noCurlies = removeNoNameChars(authorName);
 							authorNames.add(noCurlies);
@@ -230,10 +243,10 @@ public class PdfDataExtractor {
 	}
 
 	private static String removeNoNameChars(String authorName) {
-		String noTilde = TILDE.matcher(authorName).replaceAll(" ");
+		String noTilde = TILDE.matcher(authorName).replaceAll(" ").replaceAll("\\p{Z}", " ");
 		String noAsterix = noTilde.replace('∗', ' ').replace('*', ' ');
 		String noLatin = LATIN_RANGE.matcher(noAsterix).replaceAll(" ");
-		return CURLIES.matcher(noLatin).replaceAll("");
+		return CURLIES.matcher(noLatin).replaceAll("").trim();
 	}
 
 	public static String findTitleByLargestFont(FontAwareStripper stripper) throws IOException {
