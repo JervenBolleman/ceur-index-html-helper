@@ -44,10 +44,17 @@ public class MakeIndexTest {
 		Files.write(editors, ea, StandardCharsets.UTF_8);
 
 		File editorsAffiliations = editors.toFile();
-		app.convert(in.toFile(), out.toFile(),
-				"SWAT4HCLS 2025: 16th International Conference on Semantic Web Applications and Tools for Health Care and Life Sciences 2025",
-				"SWAT4HCLS2025", "https://www.swat4ls.org/workshops/barcelona2025", "Barcelona", "Feb 24-27", 2025,
-				editorsAffiliations, "Jerven Bolleman");
+		app.inputDir = in.toFile();
+		app.outputDir = out.toFile();
+		app.fullConferenceTitle = "SWAT4HCLS 2025: 16th International Conference on Semantic Web Applications and Tools for Health Care and Life Sciences 2025";
+		app.confurl = "https://www.swat4ls.org/workshops/barcelona2025";
+		app.city = "Barcelona";
+		app.period ="Feb 24-27";
+		app.year = 2025;
+		app.shortConferenceTitle="SWAT4HCLS2025";
+		app.submittingEditor ="Jerven Bolleman";
+		app.editors =editorsAffiliations;
+		app.convert();
 
 		assertTrue(Files.exists(out.resolve("index.html")));
 		assertNotEquals(0, Files.size(out.resolve("index.html")));

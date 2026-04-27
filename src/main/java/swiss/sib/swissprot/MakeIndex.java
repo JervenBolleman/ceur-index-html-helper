@@ -32,28 +32,20 @@ import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
 import java.time.LocalDate;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
-import java.util.Map;
 import java.util.Map.Entry;
-import java.util.TreeMap;
+import java.util.concurrent.Callable;
 import java.util.stream.Stream;
 
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
-import org.apache.pdfbox.pdmodel.PDDocument;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import swiss.sib.swissprot.PdfDataExtractor.Author;
-import swiss.sib.swissprot.PdfDataExtractor.PdfData;
 import swiss.sib.swissprot.checks.AuthorNameChecks;
 import swiss.sib.swissprot.checks.Issue;
 import swiss.sib.swissprot.html.Chrome;
@@ -101,11 +93,10 @@ import swiss.sib.swissprot.sjh.elements.text.Sup;
  *
  */
 @Command(name = "make-index")
-public class MakeIndex {
+public class MakeIndex implements Callable<Integer> {
 	private static final Logger log = LoggerFactory.getLogger(MakeIndex.class);
 	private static final Clazz FAILURE = clazz("failure");
 
-	private static final String PREFACE_KEY = "preface";
 	private static final Rel SCHEMA_PAGE_START = new Rel("schema:pageStart");
 	private static final Rel SCHEMA_PAGE_END = new Rel("schema:pageEnd");
 	private static final Clazz CUER_VOL_ACRONYM = clazz("CEURVOLACRONYM");
@@ -168,43 +159,30 @@ public class MakeIndex {
 
 	private OrcidChecker oc;
 
-	public static void main(String[] args) throws IOException {
-		MakeIndex app = new MakeIndex();
-		CommandLine cl = new CommandLine(app);
-		cl.parseArgs(args);
-		if (cl.isUsageHelpRequested()) {
-			cl.usage(System.out);
-		} else {
-			app.convert(app.inputDir, app.outputDir, app.fullConferenceTitle, app.shortConferenceTitle, app.confurl,
-					app.city, app.period, app.year, app.editors, app.submittingEditor);
+	
+	
+	public Integer call() throws IOException {
+		try {
+			convert();
+			return 0;
+		} catch (IOException e) {
+			return 1;
 		}
 	}
 
 	public int pageStart = 1;
 
-	void convert(File inputDir, File outputDir, String fullConferenceTitle, String shortConferenceTitle, String confurl,
-			String city, String monthDay, int year, File editors, String submittingEditor) throws IOException {
-		Map<String, List<Submission>> grouped = groupPdfsPerDirectory(inputDir);
+	void convert() throws IOException {
 		File orcidCacheDir = createOutputDirectories(outputDir);
 		oc = new OrcidChecker(orcidCacheDir);
 
-		for (Map.Entry<String, List<Submission>> en : grouped.entrySet()) {
-			for (Submission sub : en.getValue()) {
-				File paperPdf = new File(outputDir, "paper_" + sub.id() + ".pdf");
-				Files.copy(sub.pdfFile().toPath(), paperPdf.toPath(), StandardCopyOption.REPLACE_EXISTING);
-			}
-		}
-		Submission preface = null;
-		List<Submission> remove = grouped.remove(PREFACE_KEY);
-		if (remove != null && remove.size() == 1) {
-			preface = remove.getFirst();
-		}
-
-		List<Section> mainList = grouped.entrySet().stream().map(this::makeSection).toList();
+		ProceedingsData raw = ProceedingsData.collectAndCopy(inputDir, outputDir);
+		
+		List<Section> mainList = raw.sections().entrySet().stream().map(this::makeSection).toList();
 		Head head = Chrome.head(fullConferenceTitle, runChecks);
 
 		Stream<FlowContent> tocHheader = of(h2(new Text("Table of Contents")), text("\n"));
-		Stream<FlowContent> articles = Stream.concat(Stream.of(preface(preface)), mainList.stream());
+		Stream<FlowContent> articles = Stream.concat(Stream.of(preface(raw.preface())), mainList.stream());
 
 		Section toc = section(id("table-of-contents"), clazz("CEURTOC"), Stream.concat(tocHheader, articles));
 		Div content = div(id("content"), toc);
@@ -218,9 +196,9 @@ public class MakeIndex {
 //		</h2>
 		H2 fullTitle = h2(span(clazz("CEURFULLTITLE"), "Proceedings of the " + fullConferenceTitle),
 				span(clazz("CEURCOLOCATED"), "NONE"));
-		H2 ceurloctime = h2(span(clazz("CEURLOCTIME"), city + ", " + monthDay + ", " + year));
+		H2 ceurloctime = h2(span(clazz("CEURLOCTIME"), city + ", " + period + ", " + year));
 
-		var editorsElement = editors(preface, editors);
+		var editorsElement = editors(raw.preface(), editors);
 
 		Footer footer = Chrome.footerSection(submittingEditor);
 		Stream<Element> pc = of(headerSection(),
@@ -237,6 +215,8 @@ public class MakeIndex {
 		}
 	}
 
+	
+
 	private File createOutputDirectories(File outputDir) throws IOException {
 		if (!outputDir.exists()) {
 			Files.createDirectories(outputDir.toPath());
@@ -249,43 +229,7 @@ public class MakeIndex {
 		return orcidCacheDir;
 	}
 
-	private Map<String, List<Submission>> groupPdfsPerDirectory(File inputDir) throws IOException {
-		Comparator<String> papersFirst = new CompareLongShortDemoOther();
-		Map<String, List<Submission>> groupedPdfs = new TreeMap<>(papersFirst);
-		Map<String, List<Submission>> groupedSubmissions = new TreeMap<>(papersFirst);
-		for (File f : inputDir.listFiles()) {
-			if (f.isFile() && "preface.pdf".equals(f.getName())) {
-
-				Submission pre = extract(f);
-				pre.setId(1);
-				groupedSubmissions.put(PREFACE_KEY, List.of(pre));
-			} else if (f.isDirectory()) {
-				for (File f1 : f.listFiles()) {
-					if (f1.getName().endsWith(".pdf")) {
-						List<Submission> pdfsPerType = groupedPdfs.computeIfAbsent(f.getName(),
-								(s) -> new ArrayList<>());
-						pdfsPerType.add(extract(f1));
-					}
-				}
-			}
-		}
-		int id = 2;
-		for (var en : groupedPdfs.entrySet()) {
-			en.getValue().sort((a, b) -> a.title().compareTo(b.title()));
-			for (var sub : en.getValue()) {
-				sub.setId(id++);
-			}
-			groupedSubmissions.put(en.getKey(), en.getValue());
-		}
-		return groupedSubmissions;
-	}
-
-	private Submission extract(File f) throws IOException {
-		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(f))) {
-			PdfData pdfData = PdfDataExtractor.extract(document);
-			return new Submission(pdfData, document.getNumberOfPages(), f);
-		}
-	}
+	
 
 	private Div editors(Submission preface, File editors) throws IOException {
 		if (preface == null) {
@@ -355,8 +299,8 @@ public class MakeIndex {
 		if (preface == null) {
 			return new Div(empty(), of(span(FAILURE, new Text("Preface file is missing"))));
 		} else {
-			A linkToPrefacePdf = a(href("preface.pdf"), new Text(PREFACE_KEY));
-			LI li = new LI(of(id(PREFACE_KEY)), Stream.of(linkToPrefacePdf), new Value(Integer.toString(preface.id())));
+			A linkToPrefacePdf = a(href("preface.pdf"), new Text("preface"));
+			LI li = new LI(of(id("preface")), Stream.of(linkToPrefacePdf), new Value(Integer.toString(preface.id())));
 			OL prefaceOl = new OL(Stream.empty(), hasPart(), Stream.of(li));
 			// of(Datatype.RDF_HTML, SCHEMA_DESCRIPTION)
 			return new Div(empty(), of(prefaceOl));

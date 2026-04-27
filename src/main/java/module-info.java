@@ -14,6 +14,7 @@ module oa2cuer {
 	requires java.net.http;
 	requires org.slf4j;
 	requires java.desktop;
+	requires org.apache.commons.text;
 //	requires com.opencsv;
 //	requires tess4j;
 //	requires org.apache.pdfbox.tools;

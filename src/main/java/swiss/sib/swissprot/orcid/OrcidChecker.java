@@ -18,6 +18,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.net.http.HttpResponse.BodyHandlers;
+import java.time.Instant;
+import java.time.temporal.ChronoField;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -33,9 +35,9 @@ import org.eclipse.rdf4j.model.vocabulary.FOAF;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.rio.Rio;
 import org.eclipse.rdf4j.rio.helpers.StatementCollector;
-
-import org.slf4j.LoggerFactory;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import swiss.sib.swissprot.PdfDataExtractor.Author;
 
 public class OrcidChecker {
@@ -48,10 +50,13 @@ public class OrcidChecker {
 		super();
 		this.cacheDir = cacheDir;
 		Predicate<String> orcidMatcher = ORCID.asMatchPredicate();
+		long twoHoursAgo = Instant.now().minus(5L, ChronoField.MINUTE_OF_HOUR.getBaseUnit()).toEpochMilli();
 		for (File file : cacheDir.listFiles((n) -> orcidMatcher.test(n.getName()))) {
-			try (FileInputStream fis = new FileInputStream(file)) {
-				OrcidData orcidData = parseOrcidData(fis);
-				cache.put(file.getName(), orcidData);
+			if (file.lastModified() < twoHoursAgo) {
+				try (FileInputStream fis = new FileInputStream(file)) {
+					OrcidData orcidData = parseOrcidData(fis);
+					cache.put(file.getName(), orcidData);
+				}
 			}
 		}
 	}
@@ -120,9 +125,11 @@ public class OrcidChecker {
 
 	}
 
-	public record OtherName(String content) {}
-	
-	public record OrcidData(String prefferedPubName, String givenNames, String familyNames, List<OtherName> otherNames) {
+	public record OtherName(String content) {
+	}
+
+	public record OrcidData(String prefferedPubName, String givenNames, String familyNames,
+			List<OtherName> otherNames) {
 		public OrcidData(String prefferedPubName) {
 			this(prefferedPubName, null, null, List.of());
 		}
@@ -131,7 +138,7 @@ public class OrcidChecker {
 			if (prefferedPubName != null) {
 				return prefferedPubName;
 			} else {
-				return givenNames+ " "+ familyNames;
+				return givenNames + " " + familyNames;
 			}
 		}
 	}
@@ -151,15 +158,16 @@ public class OrcidChecker {
 		Collection<Statement> statements = m.getStatements();
 		List<String> prefferedNames = statements.stream().filter(s -> s.getPredicate().equals(FOAF.NAME))
 				.map(Statement::getObject).map(Value::stringValue).toList();
-		if (prefferedNames.size() > 1){
-			throw new IllegalArgumentException("ORCID record has more preferred names than expected."+prefferedNames.stream().collect(Collectors.joining(" ")));
+		if (prefferedNames.size() > 1) {
+			throw new IllegalArgumentException("ORCID record has more preferred names than expected."
+					+ prefferedNames.stream().collect(Collectors.joining(" ")));
 		}
 		var givenNames = givenNames(statements);
 		String givenName = givenNames.isEmpty() ? null : givenNames.getFirst();
 		var familyNames = familyNames(statements);
 		String familyName = familyNames.isEmpty() ? null : familyNames.getFirst();
 		List<OtherName> otherNames = List.of();
-		if (! prefferedNames.isEmpty()) {
+		if (!prefferedNames.isEmpty()) {
 			return new OrcidData(prefferedNames.getFirst());
 		} else {
 			return new OrcidData(null, givenName, familyName, otherNames);
@@ -167,12 +175,12 @@ public class OrcidChecker {
 	}
 
 	private static List<String> familyNames(Collection<Statement> statements) {
-		return statements.stream().filter(s -> s.getPredicate().equals(FOAF.FAMILY_NAME))
-				.map(Statement::getObject).map(Value::stringValue).toList();
+		return statements.stream().filter(s -> s.getPredicate().equals(FOAF.FAMILY_NAME)).map(Statement::getObject)
+				.map(Value::stringValue).toList();
 	}
 
 	private static List<String> givenNames(Collection<Statement> statements) {
-		return statements.stream().filter(s -> s.getPredicate().equals(FOAF.GIVEN_NAME))
-				.map(Statement::getObject).map(Value::stringValue).toList();
+		return statements.stream().filter(s -> s.getPredicate().equals(FOAF.GIVEN_NAME)).map(Statement::getObject)
+				.map(Value::stringValue).toList();
 	}
 }
