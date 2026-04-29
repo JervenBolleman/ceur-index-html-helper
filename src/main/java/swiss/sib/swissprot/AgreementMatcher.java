@@ -1,16 +1,28 @@
 package swiss.sib.swissprot;
 
+import static java.util.stream.Stream.of;
+import static swiss.sib.swissprot.sjh.Attributes.href;
+import static swiss.sib.swissprot.sjh.Elements.a;
+import static swiss.sib.swissprot.sjh.Elements.table;
+import static swiss.sib.swissprot.sjh.Elements.td;
+import static swiss.sib.swissprot.sjh.Elements.text;
+import static swiss.sib.swissprot.sjh.Elements.th;
+import static swiss.sib.swissprot.sjh.Elements.tr;
+
 import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Optional;
 import java.util.concurrent.Callable;
+import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 import javax.imageio.ImageIO;
@@ -22,6 +34,7 @@ import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.pdfbox.text.PDFTextStripper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,9 +42,16 @@ import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 import swiss.sib.swissprot.checks.Issue;
+import swiss.sib.swissprot.checks.Issue.Kind;
+import swiss.sib.swissprot.sjh.elements.Text;
+import swiss.sib.swissprot.sjh.elements.contenttype.FlowContent;
+import swiss.sib.swissprot.sjh.elements.table.TDOrTH;
+import swiss.sib.swissprot.sjh.elements.table.TR;
 
 @Command(name = "agreement-matcher")
 public class AgreementMatcher implements Callable<Integer> {
+	private static final Issue COMP_SIGNED = new Issue(Kind.FAILURE, "Agreement seems computer signed");
+	private static final String HAND_SIGN = "https://ceur-ws.org/HOWTOSUBMIT.html#FAQ-HAND-SIGNATURE";
 	private static final String AGREE_THAT_MY_OUR_CONTRIBUTION = "agree that my/our contribution:";
 	private static final Logger log = LoggerFactory.getLogger(AgreementMatcher.class);
 
@@ -65,13 +85,56 @@ public class AgreementMatcher implements Callable<Integer> {
 	public Integer call() throws Exception {
 		ProceedingsData collect = ProceedingsData.collect(inputDir);
 		List<Submission> submissions = collect.sections().entrySet().stream().map(Entry::getValue).flatMap(List::stream)
-				.toList();
-		match(agreementsDir, submissions).forEach(as -> {
-			String m = as.submissionId().orElseGet(() -> "None");
-			System.out.println(as.agg.title + " in " + as.agg().file().getName() + " matches " + m);
+				.collect(Collectors.toCollection(ArrayList::new));
+		int[] exitState = new int[] { 0 };
+		Stream<TR> rows = match(agreementsDir, submissions).map(as -> {
+			Optional<String> sid = as.submissionId();
+			String m = sid.orElseGet(() -> "None");
+			String ft;
+			FlowContent title;
+			if (sid.isPresent()) {
+				ft = copyAgreementToDirectory(exitState, as);
+				title = text(ft);
+			} else {
+				title = a(href(as.agg().file.getAbsolutePath()),of(text(as.agg.file.getName())));
+			}
+			Text fileName = text(as.agg().file().getName());
+			Text agreementName = text(m);
+			FlowContent issue = text("");
+			if (as.isText.isPresent()) {
+				issue = a(href(HAND_SIGN), of(text(as.isText().get().message())));
+			}
+			Stream<TDOrTH> of = of(td(title), td(fileName), td(agreementName), td(issue));
+			return tr(of);
 		});
-		;
-		return 0;
+
+		TR hr = tr(of(th(text("title")), th(text("submission file name")), th(text("id")), th(text("issues"))));
+		Files.createDirectories(outputDir.toPath());
+		try (FileOutputStream fos = new FileOutputStream(new File(outputDir, "agreements-status.html"))) {
+			table(Stream.concat(of(hr), rows)).render(fos);
+		}
+		return exitState[0];
+	}
+
+	private String copyAgreementToDirectory(int[] exitState, AgreementForSubmission as) {
+		String ft = as.agg.title.replace('\n', ' ');
+
+		try {
+			String an = as.agg.file.getName();
+			int lastDot = an.lastIndexOf('.') - 1;
+			if (lastDot < 0) {
+				exitState[0] = 1;
+			} else {
+				Optional<String> sid = as.submissionId();
+				if (sid.isPresent()) {
+					File dest = new File(outputDir, "aggreement_" + sid.get() + "." + an.substring(lastDot));
+					Files.copy(as.agg.file.toPath(), dest.toPath());
+				}
+			}
+		} catch (IOException e) {
+			exitState[0] = 1;
+		}
+		return ft;
 	}
 
 	public static Stream<AgreementForSubmission> match(File dirWithAgreements, List<Submission> subs) {
@@ -90,6 +153,7 @@ public class AgreementMatcher implements Callable<Integer> {
 						log.error(e.getMessage());
 					}
 				});
+				Files.delete(tmp);
 			}
 		} catch (IOException e) {
 			throw new RuntimeException(e);
@@ -100,20 +164,42 @@ public class AgreementMatcher implements Callable<Integer> {
 		return l.stream();
 	}
 
-	private static void extractTitleAndTryToMatch(List<Submission> subs, List<AgreementForSubmission> l, Path tmp,
+	static void extractTitleAndTryToMatch(List<Submission> subs, List<AgreementForSubmission> l, Path tmp,
 			File agreement) throws IOException, InterruptedException {
 		Optional<String> title = Optional.empty();
-		if (agreement.getName().endsWith(".png") || agreement.getName().endsWith(".jpg")
-				|| agreement.getName().endsWith(".jpeg")) {
-			title = checkImage(agreement);
-		} else if (agreement.getName().endsWith(".pdf")) {
-			title = checkPdf(tmp, agreement);
+		boolean found = findByExactFileNameMatch(subs, l, agreement);
+		if (!found) {
+			runOcr(subs, l, tmp, agreement, title, found);
 		}
-		if (title.isPresent()) {
+	}
+
+	private static void runOcr(List<Submission> subs, List<AgreementForSubmission> l, Path tmp, File agreement,
+			Optional<String> title, boolean found) throws IOException, InterruptedException {
+		String agName = agreement.getName();
+		log.info("Matching file name {}", agName);
+		if (agName.endsWith(".png") || agName.endsWith(".jpg") || agName.endsWith(".jpeg")) {
+			title = checkImage(agreement);
+		} else if (agName.endsWith(".pdf")) {
+			try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(agreement))) {
+				String t = extractPdfDocumentText(document);
+				if (t != null && !t.isBlank()) {
+					l.add(new AgreementForSubmission(new Agreement(agreement, findTitle(t).orElse(agreement.getName())),
+							null, Optional.of(COMP_SIGNED), "Exact title match"));
+					return;
+				} else {
+					title = checkPdfImage(tmp, document, agreement);
+				}
+
+			} catch (IOException e) {
+				// Can't check this PDF.
+			}
+		}
+		if (title.isPresent())
+
+		{
 			String t = title.get();
-			boolean found = findByExactTitleMatch(subs, l, agreement, t);
 			if (!found) {
-				found = findByExactFileNameMatch(subs, l, agreement, t);
+				found = findByExactTitleMatch(subs, l, agreement, t, null);
 			}
 			if (!found) {
 				guessByLevensteinDistance(subs, l, agreement, t);
@@ -122,11 +208,16 @@ public class AgreementMatcher implements Callable<Integer> {
 	}
 
 	private static boolean findByExactFileNameMatch(List<Submission> subs, List<AgreementForSubmission> l,
-			File agreement, String t) {
+			File agreement) {
 		String name = agreement.getName();
-		for (Submission sub : subs) {
+		log.info("Matching file name {}", name);
+		for (Iterator<Submission> iterator = subs.iterator(); iterator.hasNext();) {
+			Submission sub = iterator.next();
 			if (sub.originalFileName().equals(name)) {
-				l.add(new AgreementForSubmission(new Agreement(agreement, t), sub, Optional.empty(), "FileName match"));
+				iterator.remove();
+
+				l.add(new AgreementForSubmission(new Agreement(agreement, sub.title()), sub, Optional.empty(),
+						"FileName match"));
 				return true;
 			}
 		}
@@ -155,11 +246,12 @@ public class AgreementMatcher implements Callable<Integer> {
 	}
 
 	private static boolean findByExactTitleMatch(List<Submission> subs, List<AgreementForSubmission> l, File agreement,
-			String t) {
+			String t, Issue issue) {
 		boolean found = false;
 		for (Submission sub : subs) {
 			if (sub.title().equals(t)) {
-				l.add(new AgreementForSubmission(new Agreement(agreement, t), sub, Optional.empty(), "Exact title match"));
+				l.add(new AgreementForSubmission(new Agreement(agreement, t), sub, Optional.ofNullable(issue),
+						"Exact title match"));
 				found = true;
 			}
 		}
@@ -173,19 +265,14 @@ public class AgreementMatcher implements Callable<Integer> {
 		Process start = pb.start();
 		start.waitFor();
 		String string = Files.readString(txt.toPath());
+		Files.delete(txt.toPath());
 		return findTitle(string);
 	}
 
-	private static Optional<String> checkPdf(Path tmp, File file) throws InterruptedException {
-		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file))) {
-
-			String string = totext(tmp, file, document);
-
-			return findTitle(string);
-		} catch (IOException e) {
-			// Can't check this PDF.
-		}
-		return Optional.empty();
+	private static Optional<String> checkPdfImage(Path tmp, PDDocument document, File file)
+			throws IOException, InterruptedException {
+		String string = totext(tmp, file, document);
+		return findTitle(string);
 	}
 
 	private static Optional<String> findTitle(String string) {
@@ -207,7 +294,14 @@ public class AgreementMatcher implements Callable<Integer> {
 		Process start = pb.start();
 		start.waitFor();
 		String string = Files.readString(txt.toPath());
+		Files.delete(txt.toPath());
 		return string;
+	}
+
+	static String extractPdfDocumentText(PDDocument document) throws IOException {
+		var pts = new PDFTextStripper();
+		pts.setEndPage(1);
+		return pts.getText(document);
 	}
 
 	private static Path convert(Path tmp, File file, PDDocument document) throws IOException {

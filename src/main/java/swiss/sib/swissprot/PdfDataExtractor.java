@@ -197,7 +197,7 @@ public class PdfDataExtractor {
 				log.debug("{}:{}", orcidAsRegex, author.name());
 				author.name().chars().forEach(i -> {
 					int type = Character.getType(i);
-					log.error(type + " " + Character.getName(i));
+					log.info(type + " " + Character.getName(i));
 				});
 			}
 		}

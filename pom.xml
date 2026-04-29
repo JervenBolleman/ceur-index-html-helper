@@ -37,7 +37,11 @@
 			<groupId>org.apache.pdfbox</groupId>
 			<artifactId>fontbox</artifactId>
 			<version>3.0.7</version>
-			<scope>compile</scope>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.pdfbox</groupId>
+			<artifactId>jbig2-imageio</artifactId>
+			<version>3.0.4</version>
 		</dependency>
 		<dependency>
 			<groupId>org.eclipse.rdf4j</groupId>
