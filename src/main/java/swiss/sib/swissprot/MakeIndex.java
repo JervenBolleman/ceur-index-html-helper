@@ -48,6 +48,7 @@ import picocli.CommandLine.Option;
 import swiss.sib.swissprot.PdfDataExtractor.Author;
 import swiss.sib.swissprot.checks.AuthorNameChecks;
 import swiss.sib.swissprot.checks.Issue;
+import swiss.sib.swissprot.checks.Issue.Kind;
 import swiss.sib.swissprot.html.Chrome;
 import swiss.sib.swissprot.orcid.OrcidCheckResult;
 import swiss.sib.swissprot.orcid.OrcidChecker;
@@ -166,6 +167,7 @@ public class MakeIndex implements Callable<Integer> {
 			convert();
 			return 0;
 		} catch (IOException e) {
+			log.error(e.getMessage());
 			return 1;
 		}
 	}
@@ -176,13 +178,12 @@ public class MakeIndex implements Callable<Integer> {
 		File orcidCacheDir = createOutputDirectories(outputDir);
 		oc = new OrcidChecker(orcidCacheDir);
 
-		ProceedingsData raw = ProceedingsData.collectAndCopy(inputDir, outputDir);
+		ProceedingsData pd = ProceedingsData.collectAndCopy(inputDir, outputDir);
 		
-		List<Section> mainList = raw.sections().entrySet().stream().map(this::makeSection).toList();
+		List<Section> mainList = pd.sections().entrySet().stream().map(this::makeSection).toList();
 		Head head = Chrome.head(fullConferenceTitle, runChecks);
-
 		Stream<FlowContent> tocHheader = of(h2(new Text("Table of Contents")), text("\n"));
-		Stream<FlowContent> articles = Stream.concat(Stream.of(preface(raw.preface())), mainList.stream());
+		Stream<FlowContent> articles = Stream.concat(Stream.of(preface(pd.preface())), mainList.stream());
 
 		Section toc = section(id("table-of-contents"), clazz("CEURTOC"), Stream.concat(tocHheader, articles));
 		Div content = div(id("content"), toc);
@@ -198,7 +199,7 @@ public class MakeIndex implements Callable<Integer> {
 				span(clazz("CEURCOLOCATED"), "NONE"));
 		H2 ceurloctime = h2(span(clazz("CEURLOCTIME"), city + ", " + period + ", " + year));
 
-		var editorsElement = editors(raw.preface(), editors);
+		var editorsElement = editors(pd.preface(), editors);
 
 		Footer footer = Chrome.footerSection(submittingEditor);
 		Stream<Element> pc = of(headerSection(),
@@ -236,32 +237,33 @@ public class MakeIndex implements Callable<Integer> {
 			return new Div(empty(), of(span(FAILURE, text("Missing preface: can't extract editors"))));
 		}
 		Iterator<String> affiliations = Files.readAllLines(editors.toPath()).iterator();
-		Iterator<Author> iter = preface.data().authors().iterator();
+		Iterator<Author> foundEditors = preface.data().authors().iterator();
 		List<DtOrDd> names = new ArrayList<>();
 		DT editedBy = dt(text("Edited by"));
 		names.add(editedBy);
 		List<String> addresses = new ArrayList<>();
 		List<LI> addressElements = new ArrayList<>();
 		int authorIndex = 0;
-		if (iter.hasNext()) {
-			// skip header line
-			iter.next();
-			while (iter.hasNext()) {
-				Author editor = iter.next();
+		if (foundEditors.hasNext()) {
+			while (foundEditors.hasNext()) {
+				Author editor = foundEditors.next();
 				String name = editor.name();
 				String orcid = editor.orcid();
+				String adress;
+				FlowContent sup;
 				if (!affiliations.hasNext()) {
-					System.err.println("Number of editors and affiliations does not correspond");
-					System.exit(2);
+					adress = "Number of editors and affiliations does not correspond";
+					sup = new Issue(Kind.FAILURE, "Missing affiliation").render();
+				}else {
+					adress = affiliations.next();
+					if (!addresses.contains(adress)) {
+						addresses.add(adress);
+					}
+					String addressIndex = Integer.toString(addresses.indexOf(adress) + 1);
+					sup = sup(a(href("#authors-org" + addressIndex), text(addressIndex)));
 				}
-				String adress = affiliations.next();
 				Span ns = span(clazz("CEURVOLEDITOR"), SCHEMA_EDITOR, name);
 
-				if (!addresses.contains(adress)) {
-					addresses.add(adress);
-				}
-				String addressIndex = Integer.toString(addresses.indexOf(adress) + 1);
-				Sup sup = sup(a(href("#authors-org" + addressIndex), text(addressIndex)));
 				Stream<FlowContent> extra = of(ns, sup);
 				extra = checkOrcid(editor, ns, sup, extra);
 				RdfaAttribute about = new Resource("https://orcid.org/" + orcid);
@@ -285,7 +287,7 @@ public class MakeIndex implements Callable<Integer> {
 
 	}
 
-	private Stream<FlowContent> checkOrcid(Author editor, Span ns, Sup sup, Stream<FlowContent> extra) {
+	private Stream<FlowContent> checkOrcid(Author editor, Span ns, FlowContent sup, Stream<FlowContent> extra) {
 		if (runChecks) {
 			OrcidCheckResult checkOne = oc.checkOne(editor);
 			if (!checkOne.isOk()) {
@@ -299,7 +301,7 @@ public class MakeIndex implements Callable<Integer> {
 		if (preface == null) {
 			return new Div(empty(), of(span(FAILURE, new Text("Preface file is missing"))));
 		} else {
-			A linkToPrefacePdf = a(href("preface.pdf"), new Text("preface"));
+			A linkToPrefacePdf = a(href(preface.pdfFile().getName()), new Text("preface"));
 			LI li = new LI(of(id("preface")), Stream.of(linkToPrefacePdf), new Value(Integer.toString(preface.id())));
 			OL prefaceOl = new OL(Stream.empty(), hasPart(), Stream.of(li));
 			// of(Datatype.RDF_HTML, SCHEMA_DESCRIPTION)

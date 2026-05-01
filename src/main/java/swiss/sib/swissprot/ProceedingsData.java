@@ -13,12 +13,14 @@ import java.util.TreeMap;
 import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.io.RandomAccessReadBufferedFile;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import swiss.sib.swissprot.PdfDataExtractor.PdfData;
 
 public record ProceedingsData(Submission preface, Map<String, List<Submission>> sections) {
 	private static final String PREFACE_KEY = "preface";
-
+	private static final Logger log = LoggerFactory.getLogger(ProceedingsData.class);
 	/**
 	 * Looks for PDFs in the given input directory. Copies them to the output directory, in a 
 	 * named and numbered way.
@@ -52,6 +54,9 @@ public record ProceedingsData(Submission preface, Map<String, List<Submission>> 
 		List<Submission> remove = grouped.remove(PREFACE_KEY);
 		if (remove != null && remove.size() == 1) {
 			preface = remove.getFirst();
+			File paperPdf = new File(outputDir, "preface.pdf");
+			log.info("Copying preface to {}", paperPdf.toPath());
+			Files.copy(preface.pdfFile().toPath(), paperPdf.toPath(), StandardCopyOption.REPLACE_EXISTING);
 		}
 		return preface;
 	}
@@ -62,7 +67,7 @@ public record ProceedingsData(Submission preface, Map<String, List<Submission>> 
 		Map<String, List<Submission>> groupedSubmissions = new TreeMap<>(papersFirst);
 		for (File f : inputDir.listFiles()) {
 			if (f.isFile() && "preface.pdf".equals(f.getName())) {
-
+				log.info("Found preface.pdf");
 				Submission pre = extract(f);
 				pre.setId(1);
 				groupedSubmissions.put(PREFACE_KEY, List.of(pre));
