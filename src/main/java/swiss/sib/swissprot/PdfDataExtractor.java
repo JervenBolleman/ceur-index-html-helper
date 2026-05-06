@@ -3,12 +3,14 @@ package swiss.sib.swissprot;
 import static java.util.function.Predicate.not;
 import static swiss.sib.swissprot.checks.Issue.Kind.FAILURE;
 import static swiss.sib.swissprot.checks.Issue.Kind.WARNING;
+
 import java.io.IOException;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Iterator;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
@@ -47,9 +49,10 @@ public class PdfDataExtractor {
 	
 	//Note the two kinds of asterix here
 	private static final Pattern COR_MARKS_ETC = Pattern.compile("[\\*\\∗†‡\\sⰠ﻿]+");
+	private static final Pattern ANY_WORD_CHAR = Pattern.compile("[A-Z\\n]");
 	private static final Pattern MULTIPLE_COMMA = Pattern.compile(",+");
 	private static final Pattern COMMA = Pattern.compile(",");
-	private static final Pattern AND = Pattern.compile("([\\*\\∗†‡0-9\\]Ⱐ﻿])\\s?and ");
+	private static final Pattern AND = Pattern.compile("([\\*\\∗†‡0-9\\]Ⱐ﻿]),?\\s?and ");
 	private static final Pattern LATIN_RANGE = Pattern.compile("[^\\p{IsLatin}\\d\\s\\p{Punct}'’]");
 	/**
 	 * Creator of the ODF template, not likely to be the author the actual paper.
@@ -61,7 +64,7 @@ public class PdfDataExtractor {
 	public static class Author {
 		private String name;
 		private String orcid;
-		private String affiliation;
+		private Set<String> affiliation = new LinkedHashSet<>();
 
 		public Author(String name) {
 			this.name = name;
@@ -75,7 +78,7 @@ public class PdfDataExtractor {
 			return name;
 		}
 
-		public String affiliation() {
+		public Set<String> affiliation() {
 			return affiliation;
 		}
 
@@ -101,12 +104,15 @@ public class PdfDataExtractor {
 		if (title == null) {
 			title = findTitleByLargestFont(stripper);
 		}
-		if (metadata != null)
+		//LibreOffice meta-data is not dependable.
+		if (metadata != null && doci.getProducer() != null && ! doci.getProducer().contains("Libre")) {
 			extractAuthorNamesFromMetadata(metadata, authorNames);
+		}
 		if (authorNames.isEmpty()) {
 			authorNames = findAuthorsBeforeAbstract(stripper);
 		}
 		List<Author> authors = authorNames.stream().map(Author::new).toList();
+		findAuthorAffiliations(stripper.pages(), authors, failures);
 		findEmailsAndOrcids(stripper.pages(), authors, failures);
 		TextChecks.check(stripper.pages(), failures);
 		if (!hasLibertinus) {
@@ -121,6 +127,39 @@ public class PdfDataExtractor {
 			return new PdfData(title, authors, failures, stripper.pages());
 		}
 		return null;
+	}
+	
+	private static final Pattern DIGITS = Pattern.compile("\\d+");
+	
+	private static void findAuthorAffiliations(List<String> pages, List<Author> authors, List<Issue> failures) {
+		String fp = pages.getFirst();
+		int start = -1;
+		Matcher matcher = ANY_WORD_CHAR.matcher(fp);
+		for (var a : authors) {
+			int ni = fp.indexOf(a.name(), start);
+			start = ni + a.name().length();
+			//after the name is found we can start looking for cormarks.
+			if (matcher.find(start)) {
+				String cormarks = fp.substring(start, matcher.start());
+				Matcher dig = DIGITS.matcher(cormarks);
+				while(dig.find()) {
+					a.affiliation().add(dig.group());
+					start += dig.group().length();
+				}
+			}
+		}
+		for (var a :authors) {
+			Set<String> resolvedAffiliations = new LinkedHashSet<>();
+			for (Iterator<String> iterator = a.affiliation().iterator(); iterator.hasNext();) {
+				var aff = iterator.next();
+				Matcher m = Pattern.compile(aff+"(.+)").matcher(fp);
+				if (m.find(start)) {
+					resolvedAffiliations.add(m.group(1));
+					iterator.remove();
+				}
+			}
+			a.affiliation().addAll(resolvedAffiliations);
+		}
 	}
 
 	private static boolean detectLibertinusFonts(PDDocument doc) throws IOException {

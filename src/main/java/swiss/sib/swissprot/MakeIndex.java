@@ -70,6 +70,7 @@ import swiss.sib.swissprot.sjh.elements.Element;
 import swiss.sib.swissprot.sjh.elements.HTML;
 import swiss.sib.swissprot.sjh.elements.Text;
 import swiss.sib.swissprot.sjh.elements.contenttype.FlowContent;
+import swiss.sib.swissprot.sjh.elements.contenttype.PhrasingContent;
 import swiss.sib.swissprot.sjh.elements.embedded.Img;
 import swiss.sib.swissprot.sjh.elements.grouping.DD;
 import swiss.sib.swissprot.sjh.elements.grouping.DL;
@@ -88,7 +89,6 @@ import swiss.sib.swissprot.sjh.elements.sections.header.H2;
 import swiss.sib.swissprot.sjh.elements.sections.header.H3;
 import swiss.sib.swissprot.sjh.elements.text.A;
 import swiss.sib.swissprot.sjh.elements.text.Span;
-import swiss.sib.swissprot.sjh.elements.text.Sup;
 
 /**
  *
@@ -236,7 +236,6 @@ public class MakeIndex implements Callable<Integer> {
 		if (preface == null) {
 			return new Div(empty(), of(span(FAILURE, text("Missing preface: can't extract editors"))));
 		}
-		Iterator<String> affiliations = Files.readAllLines(editors.toPath()).iterator();
 		Iterator<Author> foundEditors = preface.data().authors().iterator();
 		List<DtOrDd> names = new ArrayList<>();
 		DT editedBy = dt(text("Edited by"));
@@ -249,18 +248,13 @@ public class MakeIndex implements Callable<Integer> {
 				Author editor = foundEditors.next();
 				String name = editor.name();
 				String orcid = editor.orcid();
-				String adress;
 				FlowContent sup;
-				if (!affiliations.hasNext()) {
-					adress = "Number of editors and affiliations does not correspond";
+				if (editor.affiliation().isEmpty()) {
 					sup = new Issue(Kind.FAILURE, "Missing affiliation").render();
-				}else {
-					adress = affiliations.next();
-					if (!addresses.contains(adress)) {
-						addresses.add(adress);
-					}
-					String addressIndex = Integer.toString(addresses.indexOf(adress) + 1);
-					sup = sup(a(href("#authors-org" + addressIndex), text(addressIndex)));
+				} else {
+					Stream<PhrasingContent> aa = editor.affiliation().stream().map((adress) -> makeSupForAddress(addresses, adress));
+					
+					sup = sup(aa);
 				}
 				Span ns = span(clazz("CEURVOLEDITOR"), SCHEMA_EDITOR, name);
 
@@ -285,6 +279,16 @@ public class MakeIndex implements Callable<Integer> {
 		Stream<FlowContent> concat = of(authorsBlock, ul(id("author-org"), addressElements.stream()));
 		return div(id("authors"), concat);
 
+	}
+
+
+
+	private A makeSupForAddress(List<String> addresses, String adress) {
+		if (!addresses.contains(adress)) {
+			addresses.add(adress);
+		}
+		String addressIndex = Integer.toString(addresses.indexOf(adress) + 1);
+		return a(href("#authors-org" + addressIndex), text(addressIndex));
 	}
 
 	private Stream<FlowContent> checkOrcid(Author editor, Span ns, FlowContent sup, Stream<FlowContent> extra) {

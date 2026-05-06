@@ -34,6 +34,7 @@ class PdfDataExtractorTest {
 	static final String NBSP = "non_breaking_space_in_name.pdf";
 	static final String ONE_ORCID_TO_MUCH = "extract_two_names_from_libreoffice_writer.pdf";
 	static final String STRANGE_ORCID_EXTRACT_FAILURE = "paper_12.pdf";
+	static final String PREFACE = "preface.pdf";
 
 	@TempDir
 	Path temp;
@@ -134,6 +135,43 @@ class PdfDataExtractorTest {
 			Author first = pdfData.authors().get(4);
 			assertEquals("Mark D. Wilkinson", first.name());
 			assertEquals("0000-0001-6960-357X", first.orcid());
+		}
+	}
+	
+	@Test
+	void preface() throws IOException {
+		Path file = copy(PREFACE);
+
+		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file.toFile()))) {
+			PdfData pdfData = PdfDataExtractor.extract(document);
+			assertNotNull(pdfData);
+			Author fourth = pdfData.authors().get(4);
+			assertEquals("Andrea Splendiani", fourth.name());
+			assertEquals(1, fourth.affiliation().size());
+			assertEquals("IQVIA, Kirschgartenstrasse 14, Basel, Switzerland", fourth.affiliation().iterator().next());
+			
+			Author fifth = pdfData.authors().get(5);
+			assertEquals("Andra Waagmeester", fifth.name());
+			assertEquals(1, fifth.affiliation().size());
+			assertEquals("Medical Informatics - University of Amsterdam, Amsterdam, Netherlands", fifth.affiliation().iterator().next());
+		}
+	}
+	
+	@Test
+	void paper_4() throws IOException {
+		Path file = copy("paper_4.pdf");
+
+		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file.toFile()))) {
+			PdfData pdfData = PdfDataExtractor.extract(document);
+			assertNotNull(pdfData);
+			assertEquals(6, pdfData.authors().size());
+			Author fourth = pdfData.authors().get(4);
+			assertEquals("Deepak Unni", fourth.name());
+			assertEquals(1, fourth.affiliation().size());
+			
+			Author fifth = pdfData.authors().get(5);
+			assertEquals("Sabine Österle", fifth.name());
+			assertEquals(1, fifth.affiliation().size());
 		}
 	}
 
