@@ -36,8 +36,7 @@ java -jar target/ceur-index-html-helper-1.0-SNAPSHOT-uber.jar make-index \
 	-p 'Mar 23-26' \
 	-u 'https://www.swat4ls.org/workshops/amsterdam2026/' \
 	-s 'SWAT4HCLS2026' \
-	-l '17th International Semantic Web Applications and Tools for Health Care and Life Sciences Conference' \
-	-e ~/swat4hcls-2025-editors-affiliations/
+	-l '17th International Semantic Web Applications and Tools for Health Care and Life Sciences Conference'
 ```
 
 The input directory should contain a structure
@@ -56,15 +55,6 @@ The input directory should contain a structure
 ```
 Folders names should be written out as you want the Sessions to be headed in the index.html 
 
-The file 'e/--editor-affiliations' is a new line separated file containing on each line
-the affiliations of a conference chair/editor. e.g.
-
-```
-university 1, country b
-company c, country d
-```
-This must be in the same order as the editors named in the preface.pdf.
-
 ## Checks for subset of CEUR requirements
 
 The option `--run-checks` generates an index.html with inline comments in red for failing checks. These checks are not yet complete but a first step. We also show warnings in orange.
@@ -73,9 +63,11 @@ The option `--run-checks` generates an index.html with inline comments in red fo
 
 While CEUR is accepting of many ways to write the preface pdf. 
 This tool needs the preface to be using the CEUR template.
-The tool mines the metadata (names, orcids) etc. from the structure of the PDFs and this only works for CEUR templated PDFs.
+The tool mines the metadata (names, orcids, affiliations) from the structure of the PDFs and this only works for PDFs using the CEUR templates.
 
 ## Submitted PDFs are the source of truth
 
 If an author forgets half the co-authors in the PDF, then they will not be added to the index.html.
+It is key that as submissions editors accurately and actively engage with the authors that they have correct submissions.
+
 
