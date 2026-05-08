@@ -15,6 +15,7 @@ module oa2cuer {
 	requires org.slf4j;
 	requires java.desktop;
 	requires org.apache.commons.text;
+	requires com.fasterxml.jackson.databind;
 //	requires com.opencsv;
 //	requires tess4j;
 //	requires org.apache.pdfbox.tools;
