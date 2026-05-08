@@ -109,8 +109,7 @@ public class MakeIndex implements Callable<Integer> {
 	private static final Property BIBO_URI = new Property("bibo:uri");
 	private static final Rel SCHEMA_HAS_PART = new Rel("schema:hasPart");
 	private static final Rel SCHEMA_AUTHOR = new Rel("schema:author");
-	private static final Rel BIBO_EDITOR = new Rel("bibo:editor");
-	private static final Property SCHEMA_EDITOR = new Property("schema:editor");
+	private static final Rel BIBO_EDITOR = new Rel("bibo:editor schema:editor");
 	private static final Rel OWL_SAME_AS = new Rel("owl:sameAs");
 	private static final Clazz ORCID_CLAZZ = clazz("orcid");
 	
@@ -256,7 +255,7 @@ public class MakeIndex implements Callable<Integer> {
 					
 					sup = sup(aa);
 				}
-				Span ns = span(clazz("CEURVOLEDITOR"), SCHEMA_EDITOR, name);
+				Span ns = span(clazz("CEURVOLEDITOR"), name);
 
 				Stream<FlowContent> extra = of(ns, sup);
 				extra = checkOrcid(editor, ns, sup, extra);
