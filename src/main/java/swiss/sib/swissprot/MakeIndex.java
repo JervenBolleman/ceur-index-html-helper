@@ -140,10 +140,6 @@ public class MakeIndex implements Callable<Integer> {
 			"--period" }, description = "String representing the periond the conference lasted e.g. 'Feb 24-27' or 'Apr 29-May 5'", required = true)
 	String period;
 
-	@Option(names = { "-e",
-			"--editors-affiliations" }, description = "File containing affiliations of the editors, one line per editor. Must be in the same order as they are named in the preface.pdf", required = true)
-	File editors;
-
 	@Option(names = { "-n", "--submitting-editor" }, description = "Your name as submitting editor", required = true)
 	String submittingEditor;
 
@@ -151,8 +147,6 @@ public class MakeIndex implements Callable<Integer> {
 			"--run-checks" }, description = "Your name as submitting editor", required = false, defaultValue = "false")
 	boolean runChecks;
 	
-	@Option(names = {"--agreements" }, description = "Directory with all the agreements", required = false)
-	File agreements;
 
 	@Option(names = { "-h", "--help" }, usageHelp = true, description = "display a help message")
 	private boolean helpRequested = false;
@@ -198,7 +192,7 @@ public class MakeIndex implements Callable<Integer> {
 				span(clazz("CEURCOLOCATED"), "NONE"));
 		H2 ceurloctime = h2(span(clazz("CEURLOCTIME"), city + ", " + period + ", " + year));
 
-		var editorsElement = editors(pd.preface(), editors);
+		var editorsElement = editors(pd.preface());
 
 		Footer footer = Chrome.footerSection(submittingEditor);
 		Stream<Element> pc = of(headerSection(),
@@ -231,7 +225,7 @@ public class MakeIndex implements Callable<Integer> {
 
 	
 
-	private Div editors(Submission preface, File editors) throws IOException {
+	private Div editors(Submission preface) throws IOException {
 		if (preface == null) {
 			return new Div(empty(), of(span(FAILURE, text("Missing preface: can't extract editors"))));
 		}
