@@ -9,8 +9,8 @@ import java.net.http.HttpRequest.BodyPublishers;
 import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.util.Map;
 import java.util.concurrent.Callable;
 
 import org.slf4j.Logger;
@@ -25,10 +25,10 @@ import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
 
 @Command(name = "download-oa")
-public class OxfordAbstractsDownloader implements Callable<Integer>{
-	private static final Logger logger = LoggerFactory.getLogger(OxfordAbstractsDownloader.class); 
+public class OxfordAbstractsDownloader implements Callable<Integer> {
+	private static final Logger logger = LoggerFactory.getLogger(OxfordAbstractsDownloader.class);
 
-	private static final String API_URL = "https://graphql.oxfordabstracts.com/v1/graphql";
+	private static final String API_URL = "https://app.oxfordabstracts.com/v1/graphql";
 
 	@Option(names = "--download-dir-pdfs", description = "What will be the input directory containing a preface.pdf and directories for each section containing all the paper pdfs", required = true)
 	Path pdfsDir;
@@ -36,16 +36,14 @@ public class OxfordAbstractsDownloader implements Callable<Integer>{
 	@Option(names = "--download-dir-agreements", description = "Where will you download the uploaded CEUR agreements to")
 	Path agreementsDir;
 
-	@Option(names = "--api-token", required=true)
+	@Option(names = "--api-token", required = true)
 	private String authToken = "YOUR_API_TOKEN";
 
-	@Option(names = "--event-id", required=true)
+	@Option(names = "--event-id", required = true)
 	private String eventId = "YOUR_EVENT_ID";
 
-	@Option(names = "--pdf-field-name", description = "The name of the field that contains the PDFs that you are interested in", required=true)
+	@Option(names = "--pdf-field-name", description = "The name of the field that contains the PDFs that you are interested in", required = true)
 	private String targetField = "Upload PDF"; // Change to your field name
-
-	
 
 	public Integer call() throws IOException {
 		HttpClient client = HttpClient.newHttpClient();
@@ -64,56 +62,24 @@ public class OxfordAbstractsDownloader implements Callable<Integer>{
 
 	private String createGraphQLQuery(ObjectMapper mapper) throws JsonProcessingException {
 		// 1. Prepare the GraphQL Query
-		String query = """
-query GetSubmissionsForEvent {
-  events_by_pk(id: $eventId) {
-    id
-    submissions {
-      id
-      decision {
-        value
-      }
-      accepted_for {
-        value
-      }
-      title {
-        without_html
-      }
-      responses {
-        value
-        question {
-          question_name
-          data_type
-          api_name
-          archived
-          id
-        }
-      }
-    } 
-  }
-}""";
+		String query = "query test { events_by_pk(id: $eventId) { id submissions { id decision { value } accepted_for { value } title {without_html} responses {value question {question_name data_type api_name archived id }}}}}";
 
-		String qr = query.replace("$eventId", eventId);
-		logger.info(qr);
-		String jsonPayload = mapper.writeValueAsString(
-				java.util.Map.of("query", qr));
-		logger.info(jsonPayload);
+		String qr = query.replace("$eventId", eventId).replace('\n', ' ');
+		String jsonPayload = mapper
+				.writeValueAsString(Map.of("query", qr, "variables", Map.of(), "operationName", "test"));
 		return jsonPayload;
 	}
 
 	private JsonNode sendRequests(HttpClient client, ObjectMapper mapper, String jsonPayload)
 			throws IOException, InterruptedException, JsonProcessingException, JsonMappingException {
-		logger.info(">>>"+authToken+"<<<");
-		HttpRequest request = HttpRequest.newBuilder(
-				).uri(URI.create(API_URL))
-				.header("Content-Type", "application/json")
-				.header("x-api-key", authToken)
+		HttpRequest request = HttpRequest.newBuilder().uri(URI.create(API_URL))
+				.header("content-type", "application/json").header("x-api-key", authToken)
 				.POST(BodyPublishers.ofString(jsonPayload)).build();
 
 		HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 		JsonNode root = mapper.readTree(response.body());
-		logger.info(response.body());
-		JsonNode submissions = root.path("data").path("event").path("submissions");
+//		logger.info(response.body());
+		JsonNode submissions = root.path("data").path("events_by_pk").path("submissions");
 		return submissions;
 	}
 
@@ -121,34 +87,52 @@ query GetSubmissionsForEvent {
 		for (JsonNode sub : submissions) {
 			String subId = sub.path("id").asText();
 			String status = sub.path("decision").path("value").asText("No_Decision");
-
+			String session = sub.path("accepted_for").path("value").asText("Poster");
 			for (JsonNode resp : sub.path("responses")) {
 				String questionTitle = resp.path("question").path("question_name").asText();
-				logger.info("sub: {}, status:{}, question:{}", subId, status, questionTitle);
-//				if (targetField.equals(questionTitle) && resp.has("file")) {
-//					String fileUrl = resp.path("file").path("url").asText();
-//					String originalName = resp.path("file").path("fileName").asText();
-//					String extension = originalName.contains(".")
-//							? originalName.substring(originalName.lastIndexOf("."))
-//							: ".pdf";
-//
-//					String fileName = "submission_" + subId + extension;
-//
-//					downloadFile(client, fileUrl, fileName, status);
-//				}
+				String fileUrl = resp.path("value").asText();
+				if (fileUrl.isEmpty()) {
+					logger.error("sub: {}, status:{}, question:{}, value is empty, session:{}", subId, status,
+							questionTitle, session);
+				} else if (targetField.equals(questionTitle)) {
+					logger.info("sub: {}, status:{}, question:{}, value:{}, session:{}", subId, status, questionTitle,
+							fileUrl, session);
+					String extension = fileUrl.contains(".") ? fileUrl.substring(fileUrl.lastIndexOf(".")) : ".pdf";
+
+					String fileName = "submission_" + subId + extension;
+
+					downloadFile(client, fileUrl, fileName, status);
+				}
 			}
 		}
 	}
 
-	private static void downloadFile(HttpClient client, String url, String fileName, String status) {
+	private void downloadFile(HttpClient client, String url, String fileName, String status) {
 		try {
 			HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).build();
 			HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+			if (response.statusCode() == 200) {
+				Files.copy(response.body(), pdfsDir.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
+				logger.info("Downloaded: " + fileName);
+			}
+			if (response.statusCode() == 302) {
+				request = HttpRequest.newBuilder()
+						.uri(URI.create(response.headers().firstValue("location")
+								.orElseThrow(() -> new IOException("Missing location header in 302 response"))))
+						.build();
+				response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
+				if (response.statusCode() == 200) {
+					Files.copy(response.body(), pdfsDir.resolve(fileName), StandardCopyOption.REPLACE_EXISTING);
+					logger.info("Downloaded: " + fileName);
+				} else {
+					logger.error("Failed to download " + fileName + ": HTTP " + response.statusCode());
+				}
+			} else {
+				logger.error("Failed to download " + fileName + ": HTTP " + response.statusCode());
 
-			Files.copy(response.body(), Paths.get(fileName), StandardCopyOption.REPLACE_EXISTING);
-			System.out.println("Downloaded: " + fileName);
+			}
 		} catch (Exception e) {
-			System.err.println("Failed to download " + fileName + ": " + e.getMessage());
+			logger.error("Failed to download " + fileName + ": ", e);
 		}
 	}
 }
