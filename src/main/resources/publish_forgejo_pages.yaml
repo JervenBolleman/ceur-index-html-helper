@@ -1,0 +1,17 @@
+name: Publish
+on:
+  push:
+jobs:
+  publish:
+    runs-on: codeberg-tiny
+    steps:
+      - uses: actions/checkout@v5
+      - run: |
+          mkdir site/
+          cp index.html site/
+          cp *.pdf _site/
+      - uses: actions/git-pages@v2
+        with:
+          site: https://domainname.tld/
+          token: ${{ forge.token }}
+          source: _site/

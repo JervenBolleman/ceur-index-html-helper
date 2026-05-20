@@ -26,22 +26,23 @@ public record ProceedingsData(Submission preface, Map<String, List<Submission>> 
 	 * named and numbered way.
 	 * @param inputDir
 	 * @param outputDir
+	 * @param git 
 	 * @return a ProccedingsData object, containing the original and new locations of all pdfs.
 	 * @throws IOException
 	 */
-	static ProceedingsData collectAndCopy(File inputDir, File outputDir) throws IOException {
+	static ProceedingsData collectAndCopy(File inputDir, File outputDir, boolean git) throws IOException {
 		Map<String, List<Submission>> grouped = groupPdfsPerDirectory(inputDir);
-		Submission preface = collect(outputDir, grouped);
+		Submission preface = collect(outputDir, grouped, git);
 		return new ProceedingsData(preface, grouped);
 	}
 
 	static ProceedingsData collect(File inputDir) throws IOException {
 		Map<String, List<Submission>> grouped = groupPdfsPerDirectory(inputDir);
-		Submission preface = collect(null, grouped);
+		Submission preface = collect(null, grouped, false);
 		return new ProceedingsData(preface, grouped);
 	}
 	
-	private static Submission collect(File outputDir, Map<String, List<Submission>> grouped) throws IOException {
+	private static Submission collect(File outputDir, Map<String, List<Submission>> grouped, boolean git) throws IOException {
 		if (outputDir != null) {
 			for (Map.Entry<String, List<Submission>> en : grouped.entrySet()) {
 				for (Submission sub : en.getValue()) {

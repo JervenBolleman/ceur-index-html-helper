@@ -151,12 +151,18 @@ public class MakeIndex implements Callable<Integer> {
 	@Option(names = { "-h", "--help" }, usageHelp = true, description = "display a help message")
 	private boolean helpRequested = false;
 
+	@Option(names = { "-g", "--git" }, usageHelp = true, description = "Use git integration to keep track of changes in the output directory. This will create a git repository in the output directory and commit the generated index.html and pdfs. This is useful to keep track of changes in the generated files and to easily revert to previous versions if needed. Also adds github/gitlabb/forgejo/codeberg actions", required = false, defaultValue = "false")
+	private boolean git;
+	
 	private OrcidChecker oc;
 
 	
 	
 	public Integer call() throws IOException {
 		try {
+			if (git) {
+				GitIntegration.setupGit(outputDir);
+			}
 			convert();
 			return 0;
 		} catch (IOException e) {
@@ -171,7 +177,7 @@ public class MakeIndex implements Callable<Integer> {
 		File orcidCacheDir = createOutputDirectories(outputDir);
 		oc = new OrcidChecker(orcidCacheDir);
 
-		ProceedingsData pd = ProceedingsData.collectAndCopy(inputDir, outputDir);
+		ProceedingsData pd = ProceedingsData.collectAndCopy(inputDir, outputDir, git);
 		
 		List<Section> mainList = pd.sections().entrySet().stream().map(this::makeSection).toList();
 		Head head = Chrome.head(fullConferenceTitle, runChecks);
