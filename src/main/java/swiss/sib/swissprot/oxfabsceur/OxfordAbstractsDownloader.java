@@ -30,10 +30,28 @@ public class OxfordAbstractsDownloader implements Callable<Integer> {
 
 	private static final String API_URL = "https://app.oxfordabstracts.com/v1/graphql";
 
+	private static final String QUERY_GRAPHQL = """
+			query subs { 
+				events_by_pk(id: $eventId) { 
+					id submissions { 
+						id decision { value } 
+						accepted_for { value } 
+						title {without_html} 
+						responses {value 
+							question {
+								question_name data_type api_name archived id 
+								}
+							}
+						serial_number
+					}
+				}
+			}
+			""";
+	
 	@Option(names = "--download-dir-pdfs", description = "What will be the input directory containing a preface.pdf and directories for each section containing all the paper pdfs", required = true)
 	Path pdfsDir;
 
-	@Option(names = "--download-dir-agreements", description = "Where will you download the uploaded CEUR agreements to")
+	@Option(names = "--download-dir-agreements", description = "Where will you download the uploaded CEUR agreements to" , required = true)
 	Path agreementsDir;
 
 	@Option(names = "--api-token", required = true)
@@ -44,6 +62,9 @@ public class OxfordAbstractsDownloader implements Callable<Integer> {
 
 	@Option(names = "--pdf-field-name", description = "The name of the field that contains the PDFs that you are interested in", required = true)
 	private String targetField = "Upload PDF"; // Change to your field name
+	
+	@Option(names = "--agreement-field-name", description = "The name of the field that contains the agreement PDFs", required = true)
+	private String agreementField = "Copyright form CEUR"; // Change to your field name
 
 	public Integer call() throws IOException {
 		HttpClient client = HttpClient.newHttpClient();
@@ -61,13 +82,9 @@ public class OxfordAbstractsDownloader implements Callable<Integer> {
 	}
 
 	private String createGraphQLQuery(ObjectMapper mapper) throws JsonProcessingException {
-		// 1. Prepare the GraphQL Query
-		String query = "query test { events_by_pk(id: $eventId) { id submissions { id decision { value } accepted_for { value } title {without_html} responses {value question {question_name data_type api_name archived id }}}}}";
-
-		String qr = query.replace("$eventId", eventId).replace('\n', ' ');
-		String jsonPayload = mapper
-				.writeValueAsString(Map.of("query", qr, "variables", Map.of(), "operationName", "test"));
-		return jsonPayload;
+		String qr = QUERY_GRAPHQL.replace("$eventId", eventId).replace('\n', ' ');
+		return mapper
+				.writeValueAsString(Map.of("query", qr, "variables", Map.of(), "operationName", "subs"));
 	}
 
 	private JsonNode sendRequests(HttpClient client, ObjectMapper mapper, String jsonPayload)
@@ -78,9 +95,7 @@ public class OxfordAbstractsDownloader implements Callable<Integer> {
 
 		HttpResponse<String> response = client.send(request, HttpResponse.BodyHandlers.ofString());
 		JsonNode root = mapper.readTree(response.body());
-//		logger.info(response.body());
-		JsonNode submissions = root.path("data").path("events_by_pk").path("submissions");
-		return submissions;
+		return root.path("data").path("events_by_pk").path("submissions");
 	}
 
 	private void processAndDownload(HttpClient client, JsonNode submissions) {
@@ -88,26 +103,52 @@ public class OxfordAbstractsDownloader implements Callable<Integer> {
 			String subId = sub.path("id").asText();
 			String status = sub.path("decision").path("value").asText("No_Decision");
 			String session = sub.path("accepted_for").path("value").asText("Poster");
+			String serialNumber = sub.path("serial_number").asText();
 			for (JsonNode resp : sub.path("responses")) {
 				String questionTitle = resp.path("question").path("question_name").asText();
 				String fileUrl = resp.path("value").asText();
-				if (fileUrl.isEmpty()) {
-					logger.error("sub: {}, status:{}, question:{}, value is empty, session:{}", subId, status,
-							questionTitle, session);
-				} else if (targetField.equals(questionTitle)) {
-					logger.info("sub: {}, status:{}, question:{}, value:{}, session:{}", subId, status, questionTitle,
-							fileUrl, session);
-					String extension = fileUrl.contains(".") ? fileUrl.substring(fileUrl.lastIndexOf(".")) : ".pdf";
 
-					String fileName = "submission_" + subId + extension;
-
-					downloadFile(client, fileUrl, fileName, status);
+				if (targetField.equals(questionTitle)) {
+					downloadSubmittedPdf(client, subId, status, session, serialNumber, questionTitle, fileUrl);
+				} else if (agreementField.equals(questionTitle)) {
+					downloadAgreement(client, subId, status, session, serialNumber, questionTitle, fileUrl);
 				}
 			}
 		}
 	}
 
-	private void downloadFile(HttpClient client, String url, String fileName, String status) {
+	private void downloadSubmittedPdf(HttpClient client, String subId, String status, String session,
+			String serialNumber, String questionTitle, String fileUrl) {
+		if (fileUrl.isEmpty()) {
+			logger.error("sub: {}, status:{}, question:{}, value is empty, session:{}", subId, status,
+					questionTitle, session);
+		} else {
+			logger.info("sub: {}, status:{}, question:{}, value:{}, session:{}", subId, status,
+					questionTitle, fileUrl, session);
+			String extension = fileUrl.contains(".") ? fileUrl.substring(fileUrl.lastIndexOf(".")) : ".pdf";
+
+			String fileName = "submission_" + serialNumber + extension;
+
+			downloadFile(client, fileUrl, fileName, status , pdfsDir);
+		}
+	}
+
+	private void downloadAgreement(HttpClient client, String subId, String status, String session, String serialNumber,
+			String questionTitle, String fileUrl) {
+		if (fileUrl.isEmpty()) {
+			logger.error("No agreement for sub: {}, status:{}, serial_number:{}, value is empty, session:{}", subId, status,
+					serialNumber, session);
+		} else {
+			logger.info("sub: {}, status:{}, question:{}, value:{}, session:{}", subId, status,
+					questionTitle, fileUrl, session);
+			String extension = fileUrl.contains(".") ? fileUrl.substring(fileUrl.lastIndexOf(".")) : ".pdf";
+			String fileName = "agreement_" + serialNumber + extension;
+
+			downloadFile(client, fileUrl, fileName, status , agreementsDir);
+		}
+	}
+
+	private void downloadFile(HttpClient client, String url, String fileName, String status, Path pdfsDir) {
 		try {
 			HttpRequest request = HttpRequest.newBuilder().uri(URI.create(url)).build();
 			HttpResponse<InputStream> response = client.send(request, HttpResponse.BodyHandlers.ofInputStream());
