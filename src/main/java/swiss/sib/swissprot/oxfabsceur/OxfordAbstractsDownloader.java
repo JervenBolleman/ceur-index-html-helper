@@ -129,7 +129,15 @@ public class OxfordAbstractsDownloader implements Callable<Integer> {
 
 			String fileName = "submission_" + serialNumber + extension;
 
-			downloadFile(client, fileUrl, fileName, status , pdfsDir);
+			Path sd = pdfsDir.resolve(session);
+			try {
+				if (!Files.exists(sd)) {
+					Files.createDirectories(sd);
+				}
+				downloadFile(client, fileUrl, fileName, status , sd);
+			} catch (IOException e) {
+				logger.error("Failed to create directory for session: " + session + "/" + sd, e);
+			}
 		}
 	}
 
