@@ -34,6 +34,7 @@ class PdfDataExtractorTest {
 	static final String NBSP = "non_breaking_space_in_name.pdf";
 	static final String ONE_ORCID_TO_MUCH = "extract_two_names_from_libreoffice_writer.pdf";
 	static final String STRANGE_ORCID_EXTRACT_FAILURE = "paper_12.pdf";
+	static final String FAILING_AI_DECL = "paper_19.pdf";
 	static final String PREFACE = "preface.pdf";
 
 	@TempDir
@@ -279,5 +280,17 @@ class PdfDataExtractorTest {
 		assertFalse(
 				PdfDataExtractor.isSoft("KIK-V Indicator Explorer: Consistent, Reusable SPARQL for Health Indicators"));
 		assertTrue(PdfDataExtractor.isSoft("Revisiting SIF abstraction rules with SPARQL for querying BioPAX"));
+	}
+	
+	@Test
+	void aiDeclNotSpotted() throws IOException {
+		Path file = copy(FAILING_AI_DECL);
+
+		try (PDDocument document = Loader.loadPDF(new RandomAccessReadBufferedFile(file.toFile()))) {
+			PdfData pdfData = PdfDataExtractor.extract(document);
+			assertNotNull(pdfData);
+			assertTrue(pdfData.failures().isEmpty());
+
+		}
 	}
 }

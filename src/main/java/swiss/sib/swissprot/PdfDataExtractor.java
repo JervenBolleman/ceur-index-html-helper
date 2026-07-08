@@ -163,19 +163,18 @@ public class PdfDataExtractor {
 	}
 
 	private static boolean detectLibertinusFonts(PDDocument doc) throws IOException {
-		boolean hasLibertinus = false;
 		for (PDPage page : doc.getPages()) {
 			PDResources resources = page.getResources();
 			if (resources != null) {
 				for (COSName fontName : resources.getFontNames()) {
 					PDFont font = resources.getFont(fontName);
 					if (font.isEmbedded() && font.getName() != null && font.getName().contains("Libertinus")) {
-						hasLibertinus = true;
+						return true;
 					}
 				}
 			}
 		}
-		return hasLibertinus;
+		return false;
 	}
 
 	static boolean isSoft(String title) {

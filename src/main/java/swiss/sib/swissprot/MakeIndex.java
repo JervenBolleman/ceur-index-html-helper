@@ -40,6 +40,7 @@ import java.util.Map.Entry;
 import java.util.concurrent.Callable;
 import java.util.stream.Stream;
 
+import org.eclipse.jgit.api.errors.GitAPIException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -168,6 +169,12 @@ public class MakeIndex implements Callable<Integer> {
 		} catch (IOException e) {
 			log.error(e.getMessage());
 			return 1;
+		} catch (IllegalStateException e) {
+			log.error(e.getMessage());
+			return 2;
+		} catch (GitAPIException e) {
+			log.error(e.getMessage());
+			return 3;
 		}
 	}
 
@@ -363,7 +370,7 @@ public class MakeIndex implements Callable<Integer> {
 		
 		titleSpan.add(new Span(ga(CUERTITLE), of(SCHEMA_NAME), of(new Text(title))));
 		
-		List<Issue> failures = sub.data().failures();
+		List<Issue> failures = new ArrayList<>(sub.data().failures());
 		renderFailures(titleSpan, failures);
 
 		String paperId = "paper_" + sub.id() + ".pdf";
