@@ -13,6 +13,8 @@
 		<graalvm.version>25.4.4.1.1</graalvm.version>
 		<!-- native-image of an Oracle GraalVM 25+ for the wasm profile, override with -Dnative-image=/path/to/bin/native-image -->
 		<native-image>native-image</native-image>
+		<!-- binaryen's optimizer for the wasm profile, override with -Dwasm-opt=/path/to/wasm-opt -->
+		<wasm-opt>wasm-opt</wasm-opt>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -248,7 +250,7 @@
 		<profile>
 			<!-- Browser version: mvn -Pwasm package, then serve target/web over http.
 			     Requires the native-image of Oracle GraalVM 25+ (with the svm-wasm tool) on the PATH or -Dnative-image=...,
-			     and binaryen's wasm-opt on the PATH. -->
+			     and binaryen's wasm-opt on the PATH or -Dwasm-opt=... -->
 			<id>wasm</id>
 			<build>
 				<plugins>
@@ -288,6 +290,32 @@
 										<argument>swiss.sib.swissprot.web.WebMain</argument>
 										<argument>-o</argument>
 										<argument>${project.build.directory}/web/${project.artifactId}</argument>
+									</arguments>
+								</configuration>
+							</execution>
+							<execution>
+								<!-- optimize for size, about 10% smaller -->
+								<id>wasm-opt</id>
+								<phase>package</phase>
+								<goals>
+									<goal>exec</goal>
+								</goals>
+								<configuration>
+									<executable>${wasm-opt}</executable>
+									<arguments>
+										<!-- only the features the module uses: with more enabled wasm-opt may
+										     emit instructions browsers don't support yet -->
+										<argument>--mvp-features</argument>
+										<argument>--enable-gc</argument>
+										<argument>--enable-reference-types</argument>
+										<argument>--enable-exception-handling</argument>
+										<argument>--enable-bulk-memory</argument>
+										<argument>--enable-nontrapping-float-to-int</argument>
+										<argument>--enable-sign-ext</argument>
+										<argument>-Oz</argument>
+										<argument>${project.build.directory}/web/${project.artifactId}.js.wasm</argument>
+										<argument>-o</argument>
+										<argument>${project.build.directory}/web/${project.artifactId}.js.wasm</argument>
 									</arguments>
 								</configuration>
 							</execution>
