@@ -58,6 +58,8 @@ Folders names should be written out as you want the Sessions to be headed in the
 ## Browser version (WebAssembly)
 
 The same `make-index` logic can run entirely in the browser, compiled to WebAssembly with GraalVM Web Image.
+It is published at https://www.jerven.eu/ceur-index-html-helper/ (built and deployed from `main` by
+`.github/workflows/pages.yml`).
 The page lets you pick or drop the proceedings folder, fill in the volume details, and download the
 `index.html` or a zip with the renamed PDFs. No files leave your computer; with "Run checks" the
 ORCID records are looked up from the browser.
