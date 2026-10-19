@@ -140,6 +140,8 @@
 					<compilerArgs>
 						<!-- @JS annotated methods in WebMain refer to their parameters by name -->
 						<arg>-parameters</arg>
+						<!-- WebImageFeature adds a single charset through the native-image builder -->
+						<arg>--add-exports=org.graalvm.nativeimage.builder/com.oracle.svm.hosted.jdk.localization=oa2cuer</arg>
 						<arg>-Aproject=${project.groupId}/${project.artifactId}</arg>
 					</compilerArgs>
 				</configuration>
@@ -270,8 +272,13 @@
 										<argument>-H:-AutoRunVM</argument>
 										<!-- enables the substitutions in swiss.sib.swissprot.web, e.g. jzlib instead of zlib for PDFBox -->
 										<argument>-Dceur.web-image=true</argument>
-										<!-- PDFBox needs e.g. Windows-1252 -->
-										<argument>-H:+AddAllCharsets</argument>
+										<!-- registers only make-index for picocli, and the Windows-1252 charset PDFBox uses -->
+										<argument>--features=swiss.sib.swissprot.web.WebImageFeature</argument>
+										<argument>--add-exports=org.graalvm.nativeimage.builder/com.oracle.svm.hosted.jdk.localization=ALL-UNNAMED</argument>
+										<!-- picocli's generated config registers all subcommands, making all their code reachable -->
+										<argument>--exclude-config</argument>
+										<argument>.*${project.artifactId}.*\.jar</argument>
+										<argument>META-INF/native-image/picocli-generated/.*</argument>
 										<!-- glyph lists, font metrics and cmaps used for text extraction -->
 										<argument>-H:IncludeResources=org/apache/(pdfbox|fontbox)/resources/.*</argument>
 										<!-- PDFBox touches java.awt.image classes, their static initializers load the native awt library -->

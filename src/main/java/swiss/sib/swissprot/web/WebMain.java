@@ -12,7 +12,7 @@ import java.util.stream.Stream;
 import org.graalvm.webimage.api.JS;
 
 import picocli.CommandLine;
-import swiss.sib.swissprot.CEUR;
+import swiss.sib.swissprot.MakeIndex;
 import swiss.sib.swissprot.orcid.OrcidChecker;
 
 /**
@@ -43,9 +43,10 @@ public class WebMain {
 			fillBytes(i, content);
 			Files.write(p, content);
 		}
-		List<String> makeIndexArgs = new ArrayList<>(List.of("make-index", "-i", IN.toString(), "-o", OUT.toString()));
+		List<String> makeIndexArgs = new ArrayList<>(List.of("-i", IN.toString(), "-o", OUT.toString()));
 		makeIndexArgs.addAll(List.of(args));
-		int exitCode = new CommandLine(new CEUR()).execute(makeIndexArgs.toArray(String[]::new));
+		// MakeIndex itself rather than the CEUR command, so the other subcommands are not compiled in
+		int exitCode = new CommandLine(new MakeIndex()).execute(makeIndexArgs.toArray(String[]::new));
 
 		if (Files.isDirectory(OUT)) {
 			try (Stream<Path> walk = Files.walk(OUT)) {
