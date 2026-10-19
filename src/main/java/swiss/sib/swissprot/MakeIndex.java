@@ -167,7 +167,7 @@ public class MakeIndex implements Callable<Integer> {
 	@Option(names = { "-h", "--help" }, usageHelp = true, description = "display a help message")
 	private boolean helpRequested = false;
 
-	@Option(names = { "-g", "--git" }, usageHelp = true, description = "Use git integration to keep track of changes in the output directory. This will create a git repository in the output directory and commit the generated index.html and pdfs. This is useful to keep track of changes in the generated files and to easily revert to previous versions if needed. Also adds github/gitlabb/forgejo/codeberg actions", required = false, defaultValue = "false")
+	@Option(names = { "-g", "--git" }, description = "Use git integration to keep track of changes in the output directory. This will create a git repository in the output directory and commit the generated index.html and pdfs. This is useful to keep track of changes in the generated files and to easily revert to previous versions if needed. Also adds github/gitlabb/forgejo/codeberg actions", required = false, defaultValue = "false")
 	private boolean git;
 	
 	private OrcidChecker oc;
@@ -383,7 +383,7 @@ public class MakeIndex implements Callable<Integer> {
 //			Stream<RdfaLiteAttribute> titleRdfa = of();
 		String title = sub.title();
 		while (title.endsWith(".")) {
-			title = title.substring(0, title.length() - 2);
+			title = title.substring(0, title.length() - 1);
 		}
 		List<FlowContent> titleSpan = new ArrayList<>();
 		
@@ -475,7 +475,7 @@ public class MakeIndex implements Callable<Integer> {
 		int numberOfPages = sub.pages();
 		List<PdfDataExtractor.Author> authors = sub.data().authors();
 		Span end = new Span(empty(), of(SCHEMA_PAGE_END, Datatype.XSD_NON_NEGATIVE_INTEGER),
-				of(new Text(Integer.toString(pageStart + numberOfPages))));
+				of(new Text(Integer.toString(pageStart + numberOfPages - 1))));
 		pageStart += numberOfPages;
 		Stream<? extends DtOrDd> pagesDtDD = of(dt(text("pages")),
 				new DD(of(clazz("CEURPAGES")), of(start, new Text("-"), end)));
