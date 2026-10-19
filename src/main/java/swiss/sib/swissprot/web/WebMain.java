@@ -39,9 +39,8 @@ public class WebMain {
 		for (int i = 0; i < files; i++) {
 			Path p = IN.resolve(filePath(i));
 			Files.createDirectories(p.getParent());
-			byte[] content = new byte[fileLength(i)];
-			fillBytes(i, content);
-			Files.write(p, content);
+			selectInput(i);
+			Files.write(p, unpack(fileLength(i)));
 		}
 		List<String> makeIndexArgs = new ArrayList<>(List.of("-i", IN.toString(), "-o", OUT.toString()));
 		makeIndexArgs.addAll(List.of(args));
@@ -53,7 +52,9 @@ public class WebMain {
 				for (Path p : walk.filter(Files::isRegularFile).toList()) {
 					String relative = OUT.relativize(p).toString();
 					if (!relative.startsWith(".")) {
-						output(relative, Files.readAllBytes(p));
+						byte[] content = Files.readAllBytes(p);
+						startOutput(relative, content.length);
+						output(pack(content));
 					}
 				}
 			}
@@ -102,39 +103,69 @@ public class WebMain {
 	@JS("return globalThis.ceurInput.files[i].bytes.length;")
 	private static native int fileLength(int i);
 
-	/**
-	 * Copies the file content into the Java array. Writing through the array
-	 * proxy costs a Proxy trap per byte, so use the raw array export when this
-	 * Web Image version provides it.
-	 */
 	@JS.Coerce
+	@JS("globalThis.ceurTransfer = i;")
+	private static native void selectInput(int i);
+
+	/*
+	 * File content goes between JavaScript and Java as char arrays, two bytes per
+	 * char, written and read with the array exports the Web Image runtime uses for
+	 * strings. That avoids a Proxy trap per byte, and works with Web Image versions
+	 * that can't coerce or proxy byte arrays.
+	 */
+
+	private static byte[] unpack(int length) {
+		char[] packed = new char[(length + 1) / 2];
+		fillChars(packed);
+		byte[] content = new byte[length];
+		for (int i = 0; i < length; i++) {
+			char c = packed[i / 2];
+			content[i] = (byte) (i % 2 == 0 ? c : c >> 8);
+		}
+		return content;
+	}
+
+	private static char[] pack(byte[] content) {
+		char[] packed = new char[(content.length + 1) / 2];
+		for (int i = 0; i < content.length; i++) {
+			packed[i / 2] |= (char) (i % 2 == 0 ? content[i] & 0xFF : (content[i] & 0xFF) << 8);
+		}
+		return packed;
+	}
+
+	/**
+	 * Fills the array with the content of the file chosen with selectInput.
+	 */
 	@JS("""
-			const u = globalThis.ceurInput.files[i].bytes;
-			const src = new Int8Array(u.buffer, u.byteOffset, u.length);
-			const raw = b[runtime.symbol.javaNative];
-			if (raw !== undefined && typeof getExport === "function") {
-				const write = getExport("array.byte.write");
-				for (let j = 0; j < src.length; j++) { write(raw, j, src[j]); }
-			} else {
-				for (let j = 0; j < src.length; j++) { b[j] = src[j]; }
-			}
+			const u = globalThis.ceurInput.files[globalThis.ceurTransfer].bytes;
+			const raw = c[runtime.symbol.javaNative];
+			const write = getExport("array.char.write");
+			const pairs = u.length >> 1;
+			for (let j = 0; j < pairs; j++) { write(raw, j, u[2 * j] | (u[2 * j + 1] << 8)); }
+			if (u.length & 1) { write(raw, pairs, u[u.length - 1]); }
 			""")
-	private static native void fillBytes(int i, byte[] b);
+	private static native void fillChars(char[] c);
 
 	@JS.Coerce
+	@JS("globalThis.ceurTransfer = { path: path, length: length };")
+	private static native void startOutput(String path, int length);
+
+	/**
+	 * Hands the content of the file named with startOutput to the page.
+	 */
 	@JS("""
-			const out = globalThis.ceurOutput.files;
-			const u = new Uint8Array(b.length);
-			const raw = b[runtime.symbol.javaNative];
-			if (raw !== undefined && typeof getExport === "function") {
-				const read = getExport("array.byte.read");
-				for (let j = 0; j < u.length; j++) { u[j] = read(raw, j); }
-			} else {
-				for (let j = 0; j < u.length; j++) { u[j] = b[j]; }
+			const t = globalThis.ceurTransfer;
+			const u = new Uint8Array(t.length);
+			const raw = c[runtime.symbol.javaNative];
+			const read = getExport("array.char.read");
+			for (let j = 0; j < u.length; j += 2) {
+				const v = read(raw, j >> 1);
+				u[j] = v & 0xFF;
+				if (j + 1 < u.length) { u[j + 1] = v >> 8; }
 			}
-			out.push({ path: path, bytes: u });
+			globalThis.ceurOutput.files.push({ path: t.path, bytes: u });
 			""")
-	private static native void output(String path, byte[] b);
+	private static native void output(char[] c);
 
 	@JS.Coerce
 	@JS("globalThis.ceurOutput.exitCode = code;")
