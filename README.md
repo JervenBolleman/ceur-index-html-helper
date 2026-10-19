@@ -55,6 +55,27 @@ The input directory should contain a structure
 ```
 Folders names should be written out as you want the Sessions to be headed in the index.html 
 
+## Browser version (WebAssembly)
+
+The same `make-index` logic can run entirely in the browser, compiled to WebAssembly with GraalVM Web Image.
+The page lets you pick or drop the proceedings folder, fill in the volume details, and download the
+`index.html` or a zip with the renamed PDFs. No files leave your computer; with "Run checks" the
+ORCID records are looked up from the browser.
+
+Building it requires [Oracle GraalVM 25+](https://www.graalvm.org/) (which includes the `svm-wasm` tool) with its
+`native-image` on the PATH (or pass `-Dnative-image=/path/to/native-image`), and binaryen's `wasm-opt`.
+
+```
+mvn -Pwasm package
+cd target/web
+python3 -m http.server 8000
+# open http://localhost:8000/
+```
+
+`target/web` is a static site (index.html, a web worker, and the .js/.wasm pair) that can be put on any web server,
+e.g. GitHub Pages. It needs to be served over http(s), browsers don't run it from a `file://` URL.
+The `-g` git integration is not available in the browser.
+
 ## Output modes
 
 By default (`-m RDFA`) the index.html is semantic HTML5 with RDFa annotations.

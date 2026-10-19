@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CEUR Index Helper</title>
+<style>
+:root {
+	--bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --border: #dcdcd6;
+	--accent: #1f5fa8; --accent-text: #ffffff; --ok: #2e7d32; --warn: #b26a00; --fail: #c62828; --drop: #eef3fa;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--bg: #161615; --panel: #20201e; --text: #ecece8; --muted: #a0a09a; --border: #3a3a36;
+		--accent: #6aa4e8; --accent-text: #0b1420; --ok: #7bc47f; --warn: #f0b04a; --fail: #ef7b7b; --drop: #1d2733;
+	}
+}
+:root[data-theme="dark"] {
+	--bg: #161615; --panel: #20201e; --text: #ecece8; --muted: #a0a09a; --border: #3a3a36;
+	--accent: #6aa4e8; --accent-text: #0b1420; --ok: #7bc47f; --warn: #f0b04a; --fail: #ef7b7b; --drop: #1d2733;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.5 system-ui, sans-serif; }
+main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 1.5rem; margin: 0 0 4px; }
+h2 { font-size: 1.1rem; margin: 0 0 12px; }
+p.lead { color: var(--muted); margin: 0 0 24px; }
+section { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+#drop { border: 2px dashed var(--border); border-radius: 8px; padding: 28px 16px; text-align: center; cursor: pointer; }
+#drop.over { border-color: var(--accent); background: var(--drop); }
+#drop small { color: var(--muted); display: block; margin-top: 6px; }
+#files { margin-top: 12px; }
+#files ul { margin: 4px 0 8px; padding-left: 20px; }
+.missing { color: var(--fail); }
+.ignored { color: var(--muted); }
+form { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px 16px; }
+label { display: flex; flex-direction: column; gap: 4px; font-size: 0.85rem; color: var(--muted); }
+label.check { flex-direction: row; align-items: center; gap: 8px; color: var(--text); }
+input, select { font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 9px; }
+.wide { grid-column: 1 / -1; }
+button { font: inherit; border: 1px solid var(--accent); border-radius: 6px; padding: 8px 16px; cursor: pointer; background: transparent; color: var(--accent); }
+button.primary { background: var(--accent); color: var(--accent-text); }
+button:disabled { opacity: 0.5; cursor: default; }
+.actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+#status { color: var(--muted); }
+#status.ok { color: var(--ok); }
+#status.fail { color: var(--fail); }
+#log { max-height: 240px; overflow: auto; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; font: 12px/1.4 ui-monospace, monospace; white-space: pre-wrap; margin: 12px 0 0; }
+#log .warn { color: var(--warn); }
+#log .error { color: var(--fail); }
+#preview { width: 100%; height: 600px; border: 1px solid var(--border); border-radius: 6px; background: #fff; margin-top: 12px; }
+[hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<main>
+<h1>CEUR Index Helper</h1>
+<p class="lead">Generate a CEUR-WS index.html from your proceedings PDFs. Everything runs in this browser; no files are uploaded.</p>
+
+<section>
+	<h2>1. Proceedings folder</h2>
+	<div id="drop" tabindex="0" role="button">
+		Drop the proceedings folder here, or click to choose it
+		<small>Expected: preface.pdf at the top level, and one sub-folder per session (e.g. "Long Paper", "Demo") containing the paper PDFs.</small>
+	</div>
+	<input id="picker" type="file" webkitdirectory multiple hidden>
+	<div id="files"></div>
+</section>
+
+<section>
+	<h2>2. Volume details</h2>
+	<form id="options" onsubmit="return false">
+		<label class="wide">Full conference name <input name="full" required placeholder="17th International Conference on …"></label>
+		<label>Short name (acronym + year) <input name="short" required placeholder="SWAT4HCLS2026"></label>
+		<label>Conference web page <input name="url" type="url" required placeholder="https://…"></label>
+		<label>City <input name="city" required></label>
+		<label>Year <input name="year" type="number" required min="1990" max="2100"></label>
+		<label>Period <input name="period" required placeholder="Mar 23-26"></label>
+		<label>Submitting editor <input name="editor" required></label>
+		<label>Output style
+			<select name="mode">
+				<option value="CEUR_TEMPLATE">Plain CEUR template</option>
+				<option value="RDFA">HTML5 with RDFa</option>
+			</select>
+		</label>
+		<label>Papers submitted for review <input name="submitted" type="number" min="0" placeholder="optional"></label>
+		<label class="check"><input name="checks" type="checkbox"> Run checks (marks problems in the output)</label>
+	</form>
+</section>
+
+<section>
+	<h2>3. Generate</h2>
+	<div class="actions">
+		<button id="generate" class="primary" disabled>Generate index.html</button>
+		<button id="download-index" hidden>Download index.html</button>
+		<button id="download-zip" hidden>Download all as .zip</button>
+		<span id="status">Loading…</span>
+	</div>
+	<pre id="log" hidden></pre>
+	<iframe id="preview" title="Preview of the generated index.html" sandbox hidden></iframe>
+</section>
+</main>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const FIELDS = ["full", "short", "url", "city", "year", "period", "editor", "mode", "submitted", "checks"];
+const STORE = "ceur-index-helper-options";
+
+/** Relative path ("preface.pdf", "Long Paper/x.pdf") → File */
+let selected = new Map();
+let result = null;
+let worker = null;
+let workerReady = false;
+
+// ---------- collecting the files ----------
+
+function isIgnorable(name) {
+	return name.startsWith(".") || name === "Thumbs.db" || name === "desktop.ini";
+}
+
+/** Drop a common top-level folder, so that preface.pdf is at the root. */
+function stripCommonRoot(entries) {
+	const roots = new Set(entries.map(([p]) => p.split("/")[0]));
+	const allNested = entries.every(([p]) => p.includes("/"));
+	if (roots.size === 1 && allNested) {
+		return entries.map(([p, f]) => [p.slice(p.indexOf("/") + 1), f]);
+	}
+	return entries;
+}
+
+function setSelection(entries) {
+	entries = stripCommonRoot(entries.filter(([p]) => !p.split("/").some(isIgnorable)));
+	selected = new Map(entries);
+	renderSelection();
+	updateGenerate();
+}
+
+function readAllEntries(dirReader) {
+	return new Promise((resolve, reject) => {
+		const all = [];
+		const next = () => dirReader.readEntries((batch) => {
+			if (batch.length === 0) resolve(all); else { all.push(...batch); next(); }
+		}, reject);
+		next();
+	});
+}
+
+async function walkEntry(entry, prefix, out) {
+	const path = prefix ? prefix + "/" + entry.name : entry.name;
+	if (entry.isFile) {
+		out.push([path, await new Promise((res, rej) => entry.file(res, rej))]);
+	} else if (entry.isDirectory) {
+		for (const child of await readAllEntries(entry.createReader())) {
+			await walkEntry(child, path, out);
+		}
+	}
+}
+
+function renderSelection() {
+	const box = $("files");
+	box.textContent = "";
+	if (selected.size === 0) return;
+	const sessions = new Map();
+	const ignored = [];
+	let preface = false;
+	for (const path of selected.keys()) {
+		const parts = path.split("/");
+		if (parts.length === 1 && path === "preface.pdf") preface = true;
+		else if (parts.length === 2 && path.toLowerCase().endsWith(".pdf")) {
+			if (!sessions.has(parts[0])) sessions.set(parts[0], []);
+			sessions.get(parts[0]).push(parts[1]);
+		} else ignored.push(path);
+	}
+	const add = (tag, text, cls) => { const e = document.createElement(tag); e.textContent = text; if (cls) e.className = cls; box.append(e); return e; };
+	add("div", preface ? "✓ preface.pdf" : "✗ No preface.pdf at the top level: editors can't be extracted", preface ? "" : "missing");
+	if (sessions.size === 0) add("div", "✗ No session folders with PDFs found", "missing");
+	for (const [name, pdfs] of [...sessions].sort()) {
+		add("div", `Session "${name}": ${pdfs.length} PDF${pdfs.length === 1 ? "" : "s"}`);
+		const ul = add("ul", "");
+		for (const pdf of pdfs.sort()) { const li = document.createElement("li"); li.textContent = pdf; ul.append(li); }
+	}
+	if (ignored.length) add("div", `Ignored ${ignored.length} other file${ignored.length === 1 ? "" : "s"}: ${ignored.slice(0, 5).join(", ")}${ignored.length > 5 ? ", …" : ""}`, "ignored");
+}
+
+/** Only preface.pdf and session/*.pdf are used by make-index; don't copy the rest into the VM. */
+function usedFiles() {
+	return [...selected].filter(([p]) => {
+		const parts = p.split("/");
+		return (parts.length === 1 && p === "preface.pdf") || (parts.length === 2 && p.toLowerCase().endsWith(".pdf"));
+	});
+}
+
+const drop = $("drop");
+drop.addEventListener("click", () => $("picker").click());
+drop.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("picker").click(); } });
+$("picker").addEventListener("change", (e) => {
+	setSelection([...e.target.files].map((f) => [f.webkitRelativePath || f.name, f]));
+});
+drop.addEventListener("dragover", (e) => { e.preventDefault(); drop.classList.add("over"); });
+drop.addEventListener("dragleave", () => drop.classList.remove("over"));
+drop.addEventListener("drop", async (e) => {
+	e.preventDefault();
+	drop.classList.remove("over");
+	const entries = [...e.dataTransfer.items].map((i) => i.webkitGetAsEntry && i.webkitGetAsEntry()).filter(Boolean);
+	const out = [];
+	for (const entry of entries) await walkEntry(entry, "", out);
+	setSelection(out);
+});
+
+// ---------- options ----------
+
+const form = $("options");
+function loadOptions() {
+	let saved = {};
+	try { saved = JSON.parse(localStorage.getItem(STORE) || "{}"); } catch (e) { /* storage unavailable */ }
+	for (const f of FIELDS) {
+		if (!(f in saved)) continue;
+		const el = form.elements[f];
+		if (el.type === "checkbox") el.checked = saved[f]; else el.value = saved[f];
+	}
+	if (!form.elements.year.value) form.elements.year.value = new Date().getFullYear();
+}
+function saveOptions() {
+	const o = {};
+	for (const f of FIELDS) { const el = form.elements[f]; o[f] = el.type === "checkbox" ? el.checked : el.value; }
+	try { localStorage.setItem(STORE, JSON.stringify(o)); } catch (e) { /* storage unavailable */ }
+}
+form.addEventListener("input", () => { saveOptions(); updateGenerate(); });
+
+function makeIndexArgs() {
+	const v = (n) => form.elements[n].value.trim();
+	const args = ["-f", v("full"), "-s", v("short"), "-u", v("url"), "-c", v("city"), "-y", v("year"),
+		"-p", v("period"), "-n", v("editor"), "-m", v("mode")];
+	if (v("submitted") !== "") args.push("--submitted-papers", v("submitted"));
+	if (form.elements.checks.checked) args.push("--run-checks");
+	return args;
+}
+
+function updateGenerate() {
+	$("generate").disabled = !(workerReady && selected.size > 0 && form.checkValidity());
+}
+
+// ---------- running ----------
+
+function log(text, level) {
+	// slf4j-simple writes everything to stderr, use its level instead
+	const slf4j = /^\[[^\]]*\] (TRACE|DEBUG|INFO|WARN|ERROR) /.exec(text);
+	if (slf4j) level = slf4j[1] === "WARN" ? "warn" : slf4j[1] === "ERROR" ? "error" : "log";
+	const line = document.createElement("div");
+	line.textContent = text;
+	if (level && level !== "log") line.className = level;
+	$("log").append(line);
+	$("log").scrollTop = $("log").scrollHeight;
+}
+
+function status(text, cls) {
+	$("status").textContent = text;
+	$("status").className = cls || "";
+}
+
+function startWorker() {
+	worker = new Worker("ceur-worker.js");
+	worker.onmessage = (e) => {
+		const m = e.data;
+		if (m.type === "log") log(m.text, m.level);
+		else if (m.type === "done") finished(m.output);
+		else if (m.type === "failed") { log(m.text, "error"); status("Failed, see the log above", "fail"); running(false); }
+	};
+	worker.onerror = (e) => { status("Could not load the WebAssembly module: " + e.message, "fail"); };
+	workerReady = true;
+	status(selected.size ? "" : "Choose the proceedings folder to start");
+	updateGenerate();
+}
+
+function running(on) {
+	$("generate").disabled = on;
+	$("generate").textContent = on ? "Generating…" : "Generate index.html";
+	if (!on) updateGenerate();
+}
+
+$("generate").addEventListener("click", async () => {
+	if (!form.reportValidity()) return;
+	running(true);
+	result = null;
+	$("download-index").hidden = $("download-zip").hidden = $("preview").hidden = true;
+	$("log").textContent = "";
+	$("log").hidden = false;
+	const used = usedFiles();
+	status(`Reading ${used.length} PDFs…`);
+	const files = [];
+	for (const [path, file] of used) files.push({ path, bytes: new Uint8Array(await file.arrayBuffer()) });
+	status("Extracting metadata from the PDFs…");
+	worker.postMessage({ files, args: makeIndexArgs() }, files.map((f) => f.bytes.buffer));
+});
+
+function finished(output) {
+	running(false);
+	result = output.files;
+	const index = result.find((f) => f.path === "index.html");
+	if (output.exitCode !== 0 || !index) {
+		status(`make-index failed (exit code ${output.exitCode}), see the log above`, "fail");
+		return;
+	}
+	status(`Done: index.html and ${result.length - 1} other files`, "ok");
+	// resolve the CEUR stylesheet and logo as they will be once published
+	const html = new TextDecoder().decode(index.bytes);
+	$("preview").srcdoc = html.replace(/<head>/i, '<head><base href="https://ceur-ws.org/Vol-XXX/" target="_blank">');
+	$("preview").hidden = false;
+	$("download-index").hidden = $("download-zip").hidden = false;
+}
+
+function download(name, blob) {
+	const a = document.createElement("a");
+	a.href = URL.createObjectURL(blob);
+	a.download = name;
+	a.click();
+	setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+}
+
+$("download-index").addEventListener("click", () => {
+	const index = result.find((f) => f.path === "index.html");
+	download("index.html", new Blob([index.bytes], { type: "text/html" }));
+});
+$("download-zip").addEventListener("click", () => {
+	const name = (form.elements.short.value.trim() || "ceur-volume").replace(/[^\w.-]+/g, "_");
+	download(name + ".zip", zip(result.map((f) => ({ path: name + "/" + f.path, bytes: f.bytes }))));
+});
+
+// ---------- minimal zip writer (stored, PDFs hardly compress) ----------
+
+const CRC_TABLE = (() => {
+	const t = new Uint32Array(256);
+	for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c >>> 0; }
+	return t;
+})();
+function crc32(bytes) {
+	let c = 0xffffffff;
+	for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xff] ^ (c >>> 8);
+	return (c ^ 0xffffffff) >>> 0;
+}
+function zip(files) {
+	const enc = new TextEncoder();
+	const parts = [], central = [];
+	const now = new Date();
+	const time = (now.getHours() << 11) | (now.getMinutes() << 5) | (now.getSeconds() >> 1);
+	const date = ((now.getFullYear() - 1980) << 9) | ((now.getMonth() + 1) << 5) | now.getDate();
+	let offset = 0;
+	for (const f of files) {
+		const name = enc.encode(f.path), crc = crc32(f.bytes), size = f.bytes.length;
+		const local = new DataView(new ArrayBuffer(30));
+		local.setUint32(0, 0x04034b50, true); local.setUint16(4, 20, true); local.setUint16(6, 0x0800, true);
+		local.setUint16(10, time, true); local.setUint16(12, date, true);
+		local.setUint32(14, crc, true); local.setUint32(18, size, true); local.setUint32(22, size, true);
+		local.setUint16(26, name.length, true);
+		parts.push(local, name, f.bytes);
+		const cd = new DataView(new ArrayBuffer(46));
+		cd.setUint32(0, 0x02014b50, true); cd.setUint16(4, 20, true); cd.setUint16(6, 20, true); cd.setUint16(8, 0x0800, true);
+		cd.setUint16(12, time, true); cd.setUint16(14, date, true);
+		cd.setUint32(16, crc, true); cd.setUint32(20, size, true); cd.setUint32(24, size, true);
+		cd.setUint16(28, name.length, true); cd.setUint32(42, offset, true);
+		central.push(cd, name);
+		offset += 30 + name.length + size;
+	}
+	const cdSize = central.reduce((s, p) => s + p.byteLength, 0);
+	const end = new DataView(new ArrayBuffer(22));
+	end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+	end.setUint32(12, cdSize, true); end.setUint32(16, offset, true);
+	return new Blob([...parts, ...central, end], { type: "application/zip" });
+}
+
+loadOptions();
+if (location.protocol === "file:") {
+	status("Open this page through a web server (e.g. python3 -m http.server), browsers block WebAssembly workers on file:// URLs", "fail");
+} else {
+	startWorker();
+}
+</script>
+</body>
+</html>

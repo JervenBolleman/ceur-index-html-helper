@@ -10,6 +10,9 @@
 	<url>http://maven.apache.org</url>
 	<properties>
 		<native.maven.plugin.version>0.11.0</native.maven.plugin.version>
+		<graalvm.version>25.4.4.1.1</graalvm.version>
+		<!-- native-image of an Oracle GraalVM 25+ for the wasm profile, override with -Dnative-image=/path/to/bin/native-image -->
+		<native-image>native-image</native-image>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -58,6 +61,25 @@
 			<version>5.2.0</version>
 		</dependency>
 		<dependency>
+			<!-- Pure Java zlib, replaces the native zlib in the WebAssembly build -->
+			<groupId>com.jcraft</groupId>
+			<artifactId>jzlib</artifactId>
+			<version>1.1.3</version>
+		</dependency>
+		<dependency>
+			<!-- Substitution annotations for the WebAssembly build, provided by native-image -->
+			<groupId>org.graalvm.nativeimage</groupId>
+			<artifactId>svm</artifactId>
+			<version>25.0.4</version>
+			<scope>provided</scope>
+		</dependency>
+		<dependency>
+			<!-- Only used by the WebAssembly entry point swiss.sib.swissprot.web.WebMain -->
+			<groupId>org.graalvm.sdk</groupId>
+			<artifactId>webimage-preview</artifactId>
+			<version>${graalvm.version}</version>
+		</dependency>
+		<dependency>
 			<groupId>info.picocli</groupId>
 			<artifactId>picocli</artifactId>
 			<version>4.7.6</version>
@@ -88,6 +110,19 @@
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
 				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<!-- the native-image builder (provided, for substitution annotations) can't load on a plain JVM -->
+					<classpathDependencyExcludes>
+						<classpathDependencyExclude>org.graalvm.nativeimage:*</classpathDependencyExclude>
+						<classpathDependencyExclude>org.graalvm.compiler:*</classpathDependencyExclude>
+						<classpathDependencyExclude>org.graalvm.truffle:*</classpathDependencyExclude>
+						<classpathDependencyExclude>org.graalvm.espresso:*</classpathDependencyExclude>
+						<classpathDependencyExclude>org.graalvm.sdk:nativeimage</classpathDependencyExclude>
+						<classpathDependencyExclude>org.graalvm.sdk:nativeimage-libgraal</classpathDependencyExclude>
+						<classpathDependencyExclude>org.graalvm.sdk:word</classpathDependencyExclude>
+						<classpathDependencyExclude>org.graalvm.sdk:collections</classpathDependencyExclude>
+					</classpathDependencyExcludes>
+				</configuration>
 			</plugin>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>
@@ -95,6 +130,18 @@
 				<configuration>
 					<release>21</release>
 					<verbose>true</verbose>
+					<annotationProcessorPaths>
+						<path>
+							<groupId>info.picocli</groupId>
+							<artifactId>picocli-codegen</artifactId>
+							<version>4.7.6</version>
+						</path>
+					</annotationProcessorPaths>
+					<compilerArgs>
+						<!-- @JS annotated methods in WebMain refer to their parameters by name -->
+						<arg>-parameters</arg>
+						<arg>-Aproject=${project.groupId}/${project.artifactId}</arg>
+					</compilerArgs>
 				</configuration>
 			</plugin>
 			<plugin>
@@ -195,6 +242,95 @@
 
 
 	</build>
+	<profiles>
+		<profile>
+			<!-- Browser version: mvn -Pwasm package, then serve target/web over http.
+			     Requires the native-image of Oracle GraalVM 25+ (with the svm-wasm tool) on the PATH or -Dnative-image=...,
+			     and binaryen's wasm-opt on the PATH. -->
+			<id>wasm</id>
+			<build>
+				<plugins>
+					<plugin>
+						<groupId>org.codehaus.mojo</groupId>
+						<artifactId>exec-maven-plugin</artifactId>
+						<version>3.5.0</version>
+						<executions>
+							<execution>
+								<id>web-image</id>
+								<phase>package</phase>
+								<goals>
+									<goal>exec</goal>
+								</goals>
+								<configuration>
+									<executable>${native-image}</executable>
+									<workingDirectory>${project.build.directory}</workingDirectory>
+									<arguments>
+										<argument>--tool:svm-wasm</argument>
+										<!-- the page starts the VM itself, once the files are selected -->
+										<argument>-H:-AutoRunVM</argument>
+										<!-- enables the substitutions in swiss.sib.swissprot.web, e.g. jzlib instead of zlib for PDFBox -->
+										<argument>-Dceur.web-image=true</argument>
+										<!-- PDFBox needs e.g. Windows-1252 -->
+										<argument>-H:+AddAllCharsets</argument>
+										<!-- glyph lists, font metrics and cmaps used for text extraction -->
+										<argument>-H:IncludeResources=org/apache/(pdfbox|fontbox)/resources/.*</argument>
+										<!-- PDFBox touches java.awt.image classes, their static initializers load the native awt library -->
+										<argument>--initialize-at-build-time=java.awt.image.BufferedImage,java.awt.image.ColorModel,java.awt.image.IndexColorModel,java.awt.image.Kernel,java.awt.image.Raster,java.awt.image.SampleModel,java.awt.image.SinglePixelPackedSampleModel,sun.awt.image.BufImgSurfaceData,sun.awt.image.ByteComponentRaster,sun.awt.image.BytePackedRaster,sun.awt.image.GifImageDecoder,sun.awt.image.ImageRepresentation,sun.awt.image.IntegerComponentRaster,sun.awt.image.JPEGImageDecoder,sun.awt.image.ShortComponentRaster</argument>
+										<argument>-cp</argument>
+										<argument>${project.build.directory}/${project.artifactId}-${project.version}-uber.jar</argument>
+										<argument>swiss.sib.swissprot.web.WebMain</argument>
+										<argument>-o</argument>
+										<argument>${project.build.directory}/web/${project.artifactId}</argument>
+									</arguments>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<!-- native-image always writes a huge debugging .wat text version of the module -->
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-antrun-plugin</artifactId>
+						<version>3.1.0</version>
+						<executions>
+							<execution>
+								<id>remove-wat</id>
+								<phase>package</phase>
+								<goals>
+									<goal>run</goal>
+								</goals>
+								<configuration>
+									<target>
+										<delete file="${project.build.directory}/web/${project.artifactId}.js.wat" />
+									</target>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+					<plugin>
+						<groupId>org.apache.maven.plugins</groupId>
+						<artifactId>maven-resources-plugin</artifactId>
+						<executions>
+							<execution>
+								<id>web-page</id>
+								<phase>prepare-package</phase>
+								<goals>
+									<goal>copy-resources</goal>
+								</goals>
+								<configuration>
+									<outputDirectory>${project.build.directory}/web</outputDirectory>
+									<resources>
+										<resource>
+											<directory>src/main/web</directory>
+										</resource>
+									</resources>
+								</configuration>
+							</execution>
+						</executions>
+					</plugin>
+				</plugins>
+			</build>
+		</profile>
+	</profiles>
 	<dependencyManagement>
 		<dependencies>
 			<dependency>

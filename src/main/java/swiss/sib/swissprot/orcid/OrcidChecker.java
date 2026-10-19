@@ -4,7 +4,6 @@ import static swiss.sib.swissprot.orcid.OrcidCheckResult.Status.FAIL;
 import static swiss.sib.swissprot.orcid.OrcidCheckResult.Status.OK;
 
 import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileNotFoundException;
@@ -61,24 +60,48 @@ public class OrcidChecker {
 		}
 	}
 
-	public Stream<OrcidCheckResult> check(Stream<Author> authors) {
+	/**
+	 * Fetches the turtle representation of an ORCID record.
+	 */
+	@FunctionalInterface
+	public interface Fetcher {
+		Response fetch(URI uri) throws IOException, InterruptedException;
+	}
+
+	public record Response(int statusCode, byte[] body) {
+	}
+
+	/**
+	 * Uses java.net.http by default, the WebAssembly build replaces this with a
+	 * request made by the browser.
+	 */
+	private static volatile Fetcher fetcher = OrcidChecker::fetchWithHttpClient;
+
+	public static void setFetcher(Fetcher fetcher) {
+		OrcidChecker.fetcher = fetcher;
+	}
+
+	private static Response fetchWithHttpClient(URI uri) throws IOException, InterruptedException {
 		try (HttpClient hc = HttpClient.newHttpClient()) {
-			return authors.map(a -> checkOrcid(a, hc));
+			HttpRequest r = HttpRequest.newBuilder().header("accept", "text/turtle")
+					.setHeader("user-agent", "ceur-index-helper").uri(uri).build();
+			HttpResponse<byte[]> i = hc.send(r, BodyHandlers.ofByteArray());
+			return new Response(i.statusCode(), i.body());
 		}
+	}
+
+	public Stream<OrcidCheckResult> check(Stream<Author> authors) {
+		return authors.map(this::checkOrcid);
 	}
 
 	public OrcidCheckResult checkOne(Author author) {
 		if (author.orcid() == null)
 			return new OrcidCheckResult(OK, "no orcid");
 
-		try (HttpClient hc = HttpClient.newHttpClient()) {
-			OrcidCheckResult co = checkOrcid(author, hc);
-
-			return co;
-		}
+		return checkOrcid(author);
 	}
 
-	private OrcidCheckResult checkOrcid(Author a, HttpClient hc) {
+	private OrcidCheckResult checkOrcid(Author a) {
 		if (a.orcid() != null && cache.containsKey(a.orcid())) {
 			return validate(a, cache.get(a.orcid()));
 		}
@@ -88,29 +111,21 @@ public class OrcidChecker {
 		URI uri;
 		try {
 			uri = new URI("https://pub.orcid.org/experimental_rdf_v1/" + a.orcid());
-			HttpRequest r = HttpRequest.newBuilder().header("accept", "text/turtle")
-					.setHeader("user-agent", "ceur-index-helper").uri(uri).build();
 			try {
-				HttpResponse<InputStream> i = hc.send(r, BodyHandlers.ofInputStream());
+				Response i = fetcher.fetch(uri);
 				if (i.statusCode() == 404) {
 					return new OrcidCheckResult(FAIL, "orcid service replied 404 not found for " + a.orcid());
 				} else if (i.statusCode() != 200) {
 					return new OrcidCheckResult(FAIL, "orcid service did not reply");
 				} else {
-					try (InputStream body = i.body()) {
-						ByteArrayOutputStream copy = new ByteArrayOutputStream();
-						body.transferTo(copy);
-						ByteArrayInputStream body2 = new ByteArrayInputStream(copy.toByteArray());
-						OrcidData od = parseOrcidData(body2);
-						cache.put(a.orcid(), od);
-						try (ByteArrayInputStream body3 = new ByteArrayInputStream(copy.toByteArray());
-								OutputStream os = new FileOutputStream(new File(cacheDir, a.orcid()))) {
-							body3.transferTo(os);
-						} catch (IOException e) {
-							throw new RuntimeException(e);
-						}
-						return validate(a, od);
+					OrcidData od = parseOrcidData(new ByteArrayInputStream(i.body()));
+					cache.put(a.orcid(), od);
+					try (OutputStream os = new FileOutputStream(new File(cacheDir, a.orcid()))) {
+						os.write(i.body());
+					} catch (IOException e) {
+						throw new RuntimeException(e);
 					}
+					return validate(a, od);
 				}
 			} catch (InterruptedException e) {
 				Thread.interrupted();

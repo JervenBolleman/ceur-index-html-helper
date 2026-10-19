@@ -17,6 +17,9 @@ module oa2cuer {
 	requires org.apache.commons.text;
 	requires com.fasterxml.jackson.databind;
 	requires org.eclipse.jgit;
+	requires static org.graalvm.webimage.api;
+	requires static org.graalvm.nativeimage.builder;
+	requires jzlib;
 //	requires com.opencsv;
 //	requires tess4j;
 //	requires org.apache.pdfbox.tools;
