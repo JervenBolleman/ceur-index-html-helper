@@ -1,5 +1,6 @@
 package swiss.sib.swissprot;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -20,7 +21,37 @@ public class MakeIndexTest {
 
 	@Test
 	void createMini() throws IOException {
+		MakeIndex app = setupMini();
+		app.convert();
 
+		assertTrue(Files.exists(out.resolve("index.html")));
+		assertNotEquals(0, Files.size(out.resolve("index.html")));
+		assertTrue(Files.exists(out.resolve("paper_1.pdf")));
+		assertTrue(Files.exists(out.resolve("paper_2.pdf")));
+		assertTrue(Files.exists(out.resolve("paper_3.pdf")));
+	}
+
+	@Test
+	void createMiniCeurTemplate() throws IOException {
+		MakeIndex app = setupMini();
+		app.outputMode = MakeIndex.OutputMode.CEUR_TEMPLATE;
+		app.submittedPapers = 5;
+		app.runChecks = true;
+		app.convert();
+
+		String index = Files.readString(out.resolve("index.html"));
+		assertTrue(index.startsWith("<!DOCTYPE html>"));
+		assertTrue(index.contains("<div class=\"CEURTOC\">"));
+		assertTrue(index.contains("<span class=\"CEURSUBMITTEDPAPERS\">5</span>"));
+		assertTrue(index.contains("<span class=\"CEURACCEPTEDPAPERS\">2</span>"));
+		assertTrue(index.contains("<li id=\"paper_2\"><a href=\"paper_2.pdf\">"));
+		assertTrue(index.contains("class=\"CEURAUTHOR\""));
+		assertTrue(index.contains("class=\"CEURVOLEDITOR\""));
+		assertFalse(index.contains("property="));
+		assertTrue(Files.exists(out.resolve("paper_3.pdf")));
+	}
+
+	private MakeIndex setupMini() throws IOException {
 		MakeIndex app = new MakeIndex();
 
 		Path shortDir = in.resolve("short");
@@ -41,13 +72,7 @@ public class MakeIndexTest {
 		app.year = 2025;
 		app.shortConferenceTitle="SWAT4HCLS2025";
 		app.submittingEditor ="Jerven Bolleman";
-		app.convert();
-
-		assertTrue(Files.exists(out.resolve("index.html")));
-		assertNotEquals(0, Files.size(out.resolve("index.html")));
-		assertTrue(Files.exists(out.resolve("paper_1.pdf")));
-		assertTrue(Files.exists(out.resolve("paper_2.pdf")));
-		assertTrue(Files.exists(out.resolve("paper_3.pdf")));
+		return app;
 	}
 
 	private Path copy(String filename, Path temp) throws IOException {

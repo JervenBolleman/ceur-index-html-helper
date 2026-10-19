@@ -29,7 +29,7 @@ import swiss.sib.swissprot.sjh.elements.text.Time;
 
 public class Chrome {
 
-	private static final String ERR_CSS = """
+	public static final String ERR_CSS = """
 			.failure {color:red}
 			.failure::before{ content:' ❌'} 
 			.warning {color:orange} 

@@ -149,6 +149,21 @@ public class MakeIndex implements Callable<Integer> {
 	boolean runChecks;
 	
 
+	public enum OutputMode {
+		/** Semantic HTML5 with RDFa annotations */
+		RDFA,
+		/** The plain CEUR-WS index.html template with CEUR* class tags */
+		CEUR_TEMPLATE
+	}
+
+	@Option(names = { "-m",
+			"--output-mode" }, description = "Style of the generated index.html, one of: ${COMPLETION-CANDIDATES} (default: ${DEFAULT-VALUE})", defaultValue = "RDFA")
+	OutputMode outputMode = OutputMode.RDFA;
+
+	@Option(names = {
+			"--submitted-papers" }, description = "Number of papers submitted for peer-review, used in the preface summary of the CEUR_TEMPLATE output mode", required = false)
+	Integer submittedPapers;
+
 	@Option(names = { "-h", "--help" }, usageHelp = true, description = "display a help message")
 	private boolean helpRequested = false;
 
@@ -185,7 +200,11 @@ public class MakeIndex implements Callable<Integer> {
 		oc = new OrcidChecker(orcidCacheDir);
 
 		ProceedingsData pd = ProceedingsData.collectAndCopy(inputDir, outputDir, git);
-		
+		if (outputMode == OutputMode.CEUR_TEMPLATE) {
+			new CeurTemplateIndex(this, oc).write(pd, new File(outputDir, "index.html"));
+			return;
+		}
+
 		List<Section> mainList = pd.sections().entrySet().stream().map(this::makeSection).toList();
 		Head head = Chrome.head(fullConferenceTitle, runChecks);
 		Stream<FlowContent> tocHheader = of(h2(new Text("Table of Contents")), text("\n"));

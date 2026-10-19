@@ -55,6 +55,13 @@ The input directory should contain a structure
 ```
 Folders names should be written out as you want the Sessions to be headed in the index.html 
 
+## Output modes
+
+By default (`-m RDFA`) the index.html is semantic HTML5 with RDFa annotations.
+With `-m CEUR_TEMPLATE` the index.html follows the plain [CEUR-WS template](https://ceur-ws.org/Vol-XXX/index.html),
+using only the `CEUR*` class tags and schema.org `itemid` attributes for ORCIDs.
+In this mode, use `--submitted-papers N` to fill in the number of submitted papers in the preface summary.
+
 ## Checks for subset of CEUR requirements
 
 The option `--run-checks` generates an index.html with inline comments in red for failing checks. These checks are not yet complete but a first step. We also show warnings in orange.
